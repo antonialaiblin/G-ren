@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wichtel-Zentrale</title>
+  <meta name="description" content="Wichteln der Gören: Namen antippen, PIN festlegen, geheimen Wichtel sehen.">
+  <meta name="theme-color" content="#2f6f5e">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Wichteln">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img class="logo" src="/icons/icon.svg" alt="" width="44" height="44">
+      <div>
+        <h1>Wichtel-Zentrale</h1>
+        <p class="sub">Wichteln der Gören · Weihnachten 2026</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p class="error card" id="load-error" hidden>Die Seite konnte nicht geladen werden. Prüf dein Internet und lade neu.</p>
+
+    <!-- Wer bist du? -->
+    <section id="pick" class="card" hidden>
+      <h2>Wer bist du? 🎁</h2>
+      <p class="muted">Tipp auf deinen Namen. Du siehst nur, wen du selbst beschenkst.</p>
+      <div class="people" id="people"></div>
+    </section>
+
+    <!-- PIN -->
+    <form id="pin-form" class="card" hidden autocomplete="off">
+      <h2 id="pin-title">Hallo!</h2>
+      <p class="muted" id="pin-hint"></p>
+      <label class="field"><span>PIN (4 Ziffern)</span>
+        <input id="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="off" required>
+      </label>
+      <p class="error" id="pin-error" hidden></p>
+      <div class="row">
+        <button type="submit" id="pin-go">Umschlag öffnen</button>
+        <button type="button" class="ghost" id="pin-back">Das bin ich nicht</button>
+      </div>
+    </form>
+
+    <!-- Brief -->
+    <section id="reveal" hidden>
+      <div class="stage">
+        <p class="eyebrow">Streng geheim</p>
+        <div class="envelope" id="envelope">
+          <div class="back"></div>
+          <div class="flap"></div>
+          <div class="letter">
+            <span class="small">Du beschenkst</span>
+            <strong class="who" id="who"></strong>
+            <span class="small">Psst, nicht verraten!</span>
+          </div>
+          <div class="front"></div>
+          <div class="seal">W</div>
+        </div>
+        <div class="pills" id="pills"></div>
+        <p class="muted small center" id="reveal-note"></p>
+        <button type="button" class="ghost" id="logout">Fertig, Brief zumachen</button>
+      </div>
+    </section>
+
+    <section class="card" id="status" hidden>
+      <h2>Wer hat schon nachgeschaut?</h2>
+      <div class="progress"><span id="bar"></span></div>
+      <p class="muted small" id="status-line"></p>
+    </section>
+
+    <p class="foot small muted">Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
+  </main>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
