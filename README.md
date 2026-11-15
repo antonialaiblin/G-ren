@@ -1,4 +1,4 @@
-# Wichtel-Zentrale 🎁
+# Gören 🎁
 
 Die Wichtel-Website der Gören (Milli, Lilly, Emma, Leo, Toni):
 
@@ -17,8 +17,8 @@ nicht in diesem Repository.
 
 1. Auf <https://dash.cloudflare.com> anmelden (dasselbe Konto wie für die Putzplan-Zentrale).
 2. **Workers & Pages → Create → Import a repository** wählen und dieses Repository auswählen.
-3. Als Projektnamen `wichtel-zentrale` lassen (muss zu `wrangler.toml` passen) und **Deploy** klicken.
-4. Die Adresse `https://wichtel-zentrale.<dein-name>.workers.dev` öffnen und in die WhatsApp-Gruppe schicken.
+3. Als Projektnamen `goeren` lassen (muss zu `wrangler.toml` passen) und **Deploy** klicken.
+4. Die Adresse `https://goeren.<dein-name>.workers.dev` öffnen und in die WhatsApp-Gruppe schicken.
 
 Ausgelost wird automatisch beim ersten Aufruf. Danach wird jede Änderung in diesem Repository automatisch veröffentlicht.
 
