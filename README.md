@@ -6,6 +6,7 @@ Die Wichtel-Website der Gören (Milli, Lilly, Emma, Leo, Toni):
 - beim ersten Mal legt man eine **4-stellige PIN** fest, danach kann nur man selbst den eigenen Brief wieder öffnen
 - im Brief steht, wen man beschenkt, und die **Größe** dieser Person (plus Budget und Bescherung, falls eingetragen)
 - niemand zieht sich selbst, und die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht
+- nach dem Öffnen trägt jede ihre **Wünsche zu Farben, Schnitt und Sonstigem** ein; die sieht nur, wer sie gezogen hat
 - zeigt, wer schon nachgeschaut hat
 - nach 5 falschen PINs ist der Name 10 Minuten gesperrt
 - lässt sich wie eine App auf den Home-Bildschirm legen

@@ -36,7 +36,7 @@ export class Wichtel extends DurableObject {
       });
     }
 
-    if (url.pathname === '/api/reveal' && request.method === 'POST') {
+    if ((url.pathname === '/api/reveal' || url.pathname === '/api/wishes') && request.method === 'POST') {
       let body;
       try { body = await request.json(); } catch { return json({ error: 'Ungültige Anfrage.' }, 400); }
       const name = String(body.name || '');
@@ -52,6 +52,7 @@ export class Wichtel extends DurableObject {
 
       const h = await hashPin(s.round, name, pin);
       const first = !s.pins[name];
+      if (first && url.pathname === '/api/wishes') return json({ error: 'Bitte zuerst den Umschlag öffnen.' }, 403);
       if (first) {
         s.pins[name] = h;
         s.opened[name] = Date.now();
@@ -63,11 +64,26 @@ export class Wichtel extends DurableObject {
         return json({ error: 'Falsche PIN.' }, 403);
       }
       delete s.fails[name];
-      await this.ctx.storage.put('state', s);
+      s.wishes = s.wishes || {};
 
+      if (url.pathname === '/api/wishes') {
+        const w = body.wishes || {};
+        const clean = (v) => String(v || '').trim().slice(0, 300);
+        s.wishes[name] = { farbe: clean(w.farbe), schnitt: clean(w.schnitt), sonst: clean(w.sonst), at: Date.now() };
+        await this.ctx.storage.put('state', s);
+        return json({ ok: true, mine: s.wishes[name] });
+      }
+
+      await this.ctx.storage.put('state', s);
       const to = s.pairs[name];
       const person = PEOPLE.find(p => p.name === to);
-      return json({ first, to, size: person ? person.size : '', budget: BUDGET, bescherung: BESCHERUNG });
+      return json({
+        first, to,
+        size: person ? person.size : '',
+        theirWishes: s.wishes[to] || null,
+        mine: s.wishes[name] || null,
+        budget: BUDGET, bescherung: BESCHERUNG,
+      });
     }
 
     return json({ error: 'Nicht gefunden.' }, 404);

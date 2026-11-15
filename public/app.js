@@ -6,6 +6,7 @@ const store = {
 
 let state = null;
 let me = store.get('wichtel-name');
+let myPin = null;
 
 async function api(path, body) {
   const res = await fetch(path, body
@@ -82,6 +83,7 @@ $('pin-form').addEventListener('submit', async (e) => {
   $('pin-go').disabled = true;
   try {
     const r = await api('/api/reveal', { name: me, pin });
+    myPin = pin;
     reveal(r);
     if (r.first) state.opened.push(me);
     render();
@@ -120,13 +122,50 @@ function reveal(r) {
   $('reveal-note').textContent = r.first
     ? 'Deine PIN ist gespeichert. Mit ihr kannst du jederzeit wieder nachschauen.'
     : '';
+  // Wünsche der gezogenen Person
+  $('their-title').textContent = `${r.to}s Wünsche`;
+  const dl = $('their-wishes');
+  dl.innerHTML = '';
+  const tw = r.theirWishes || {};
+  for (const [k, label] of [['farbe', 'Farben'], ['schnitt', 'Schnitt'], ['sonst', 'Sonstiges']]) {
+    if (!tw[k]) continue;
+    const dt = document.createElement('dt'); dt.textContent = label;
+    const dd = document.createElement('dd'); dd.textContent = tw[k];
+    dl.append(dt, dd);
+  }
+  $('their-empty').hidden = dl.children.length > 0;
+  $('their-empty').textContent = `${r.to} hat noch keine Wünsche eingetragen. Schau später noch mal rein.`;
+  // Eigene Wünsche
+  const mine = r.mine || {};
+  $('w-farbe').value = mine.farbe || '';
+  $('w-schnitt').value = mine.schnitt || '';
+  $('w-sonst').value = mine.sonst || '';
+  $('wish-status').textContent = '';
+
   const env = $('envelope');
   env.classList.remove('open');
   requestAnimationFrame(() => requestAnimationFrame(() => env.classList.add('open')));
   window.scrollTo(0, 0);
 }
 
+$('wish-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('wish-save').disabled = true;
+  $('wish-status').textContent = '';
+  try {
+    await api('/api/wishes', { name: me, pin: myPin, wishes: {
+      farbe: $('w-farbe').value, schnitt: $('w-schnitt').value, sonst: $('w-sonst').value,
+    } });
+    $('wish-status').textContent = 'Gespeichert ✓';
+  } catch (err) {
+    $('wish-status').textContent = err.message;
+  } finally {
+    $('wish-save').disabled = false;
+  }
+});
+
 $('logout').onclick = () => {
+  myPin = null;
   $('reveal').hidden = true;
   $('envelope').classList.remove('open');
   me = null; store.set('wichtel-name', null);

@@ -65,8 +65,30 @@
         </div>
         <div class="pills" id="pills"></div>
         <p class="muted small center" id="reveal-note"></p>
-        <button type="button" class="ghost" id="logout">Fertig, Brief zumachen</button>
       </div>
+
+      <div class="card">
+        <h2 id="their-title">Ihre Wünsche</h2>
+        <dl class="wishes" id="their-wishes"></dl>
+        <p class="muted small" id="their-empty">Sie hat noch keine Wünsche eingetragen. Schau später noch mal rein.</p>
+      </div>
+
+      <form class="card" id="wish-form" autocomplete="off">
+        <h2>Deine Wünsche ✨</h2>
+        <p class="muted small">Das sieht nur die Person, die dich gezogen hat. Du kannst es jederzeit ändern.</p>
+        <label class="field text"><span>Farben</span>
+          <textarea id="w-farbe" maxlength="300" rows="2" placeholder="z. B. gern Grün und Beige, bitte kein Pink"></textarea></label>
+        <label class="field text"><span>Schnitt</span>
+          <textarea id="w-schnitt" maxlength="300" rows="2" placeholder="z. B. eher oversized, hohe Taille, keine Crop-Tops"></textarea></label>
+        <label class="field text"><span>Sonstiges</span>
+          <textarea id="w-sonst" maxlength="300" rows="2" placeholder="z. B. Schuhgröße 39, mag Gold-Schmuck"></textarea></label>
+        <div class="row">
+          <button type="submit" id="wish-save">Wünsche speichern</button>
+          <span class="saved" id="wish-status" aria-live="polite"></span>
+        </div>
+      </form>
+
+      <div class="center"><button type="button" class="ghost" id="logout">Fertig, abmelden</button></div>
     </section>
 
     <section class="card" id="status" hidden>

@@ -84,7 +84,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--bg); color: var(--text); width: 100%; max-width: 220px;
 }
-.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.field.text textarea {
+  font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--text); width: 100%; resize: vertical;
+}
+.field.text textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.saved { color: var(--accent); font-weight: 600; font-size: 14px; }
+.wishes { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+.wishes dt { font-weight: 700; color: var(--accent); }
+.wishes dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 .error { color: var(--warn); font-weight: 600; }
 
 .progress { height: 10px; border-radius: 99px; background: var(--accent-soft); overflow: hidden; margin: 8px 0; }
