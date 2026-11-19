@@ -16,7 +16,10 @@ export const BESCHERUNG = '';
 // Dann werden auch alle PINs zurückgesetzt.
 export const ROUND = '2026';
 
-// Passwort vergessen? Hier die Person eintragen und die Zahl um 1 erhöhen,
+// Wer die Accounts verwalten und Passwörter zurücksetzen darf (unter „Übersicht“).
+export const ADMIN = 'Toni';
+
+// Notfall, falls die Admin selbst nicht mehr reinkommt: Hier die Person eintragen und die Zahl um 1 erhöhen,
 // z. B. { Lilly: 1 }. Dann ist ihr Account gelöscht und sie kann sich neu registrieren.
 // Ihre Auslosung und ihre Wünsche bleiben erhalten. Beim nächsten Mal: { Lilly: 2 }.
 export const RESET = {};

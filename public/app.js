@@ -56,6 +56,15 @@ function render() {
     : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${state.names.filter(x => !opened.has(x)).join(', ')}.`;
   $('status').hidden = false;
 
+  // Leiste unten (Übersicht / Kalender) gibt es erst, wenn man angemeldet ist und weiß, wer man ist
+  const inside = !!(account && account.person);
+  $('tabbar').hidden = !inside;
+  document.body.classList.toggle('tabs', inside);
+  showTab(inside && location.hash === '#kalender' ? 'cal' : 'home');
+  if (inside) renderCal();
+  $('admin-box').hidden = !(inside && state.isAdmin);
+  if (inside && state.isAdmin) loadAccounts();
+
   if (!$('reveal').hidden) return;
 
   if (!account) {
@@ -91,8 +100,157 @@ function render() {
     $('ready-hint').textContent = first
       ? 'Dein Umschlag wartet auf dich. Schau nach, wen du beschenkst!'
       : 'Du kannst deinen Brief jederzeit noch einmal öffnen und deine Wünsche ändern.';
+    // Nächster Termin aus dem Kalender
+    const today = isoDay(new Date());
+    const next = (state.events || []).find(e => e.day >= today);
+    $('next-ev').hidden = !next;
+    if (next) {
+      const [, mm, dd] = next.day.split('-').map(Number);
+      $('next-ev').innerHTML = '📅 Nächster Termin: <b></b> <a href="#kalender">Kalender</a>';
+      $('next-ev').querySelector('b').textContent = `${dd}.${mm}. ${next.title}`;
+    }
     $('open-go').textContent = first ? 'Umschlag öffnen 💌' : 'Brief noch mal ansehen';
   }
+}
+
+// ---------- Seiten (Tabs) ----------
+function showTab(name) {
+  $('tab-home').hidden = name !== 'home';
+  $('tab-cal').hidden = name !== 'cal';
+  document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === name));
+}
+window.addEventListener('hashchange', () => { if (state) { render(); window.scrollTo(0, 0); } });
+
+// ---------- Accounts verwalten (nur Admin) ----------
+async function loadAccounts(r) {
+  try { r = r || await api('/api/admin/accounts', {}); } catch (e2) { err('admin-error', e2.message); return; }
+  err('admin-error', '');
+  const list = $('acct-list');
+  list.innerHTML = '';
+  for (const a of r.accounts) {
+    const li = document.createElement('li');
+    li.innerHTML = '<div><span class="who"></span> <span class="user"></span></div>'
+      + '<form class="pw-row"><input type="text" minlength="4" maxlength="100" placeholder="Neues Passwort" autocomplete="off" required>'
+      + '<button type="submit">Setzen</button></form>';
+    li.querySelector('.who').textContent = a.person || 'noch niemand gewählt';
+    li.querySelector('.user').textContent = `Benutzername: ${a.username}`;
+    if (a.forgot) {
+      const f = document.createElement('span'); f.className = 'flag'; f.textContent = 'Passwort vergessen';
+      li.querySelector('div').appendChild(f);
+    }
+    const form = li.querySelector('form');
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const pw = form.querySelector('input').value;
+      try {
+        const r2 = await api('/api/admin/password', { key: a.key, password: pw });
+        await loadAccounts(r2);
+        const okLi = [...$('acct-list').children].find(x => x.dataset.key === a.key);
+        if (okLi) {
+          const ok = document.createElement('p'); ok.className = 'ok';
+          ok.textContent = `✓ Neues Passwort gesetzt. Sag ${a.person || a.username}: „${pw}“`;
+          okLi.appendChild(ok);
+        }
+      } catch (e2) { err('admin-error', e2.message); }
+    };
+    li.dataset.key = a.key;
+    list.appendChild(li);
+  }
+}
+
+// ---------- Kalender ----------
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const pad = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+let calMonth = new Date(); calMonth.setDate(1);
+
+function renderCal() {
+  const events = state.events || [];
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  $('cal-title').textContent = `${MONTHS[m]} ${y}`;
+  const grid = $('cal-grid');
+  grid.innerHTML = '';
+  for (const d of ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']) {
+    const el = document.createElement('div'); el.className = 'dow'; el.textContent = d; grid.appendChild(el);
+  }
+  // Start am Montag vor dem 1. des Monats
+  const start = new Date(y, m, 1);
+  start.setDate(1 - ((start.getDay() + 6) % 7));
+  const today = isoDay(new Date());
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    if (i >= 35 && d.getMonth() !== m) break;
+    const key = isoDay(d);
+    const cell = document.createElement('div');
+    cell.className = 'day' + (d.getMonth() !== m ? ' out' : '') + (key === today ? ' today' : '');
+    cell.innerHTML = '<span class="n"></span>';
+    cell.querySelector('.n').textContent = d.getDate();
+    for (const ev of events.filter(e => e.day === key)) {
+      const p = document.createElement('span'); p.className = 'pill-ev'; p.textContent = ev.title; p.title = ev.title;
+      cell.appendChild(p);
+    }
+    cell.onclick = () => openEventForm(key);
+    grid.appendChild(cell);
+  }
+  // Liste der nächsten Termine
+  const list = $('ev-list');
+  list.innerHTML = '';
+  const upcoming = events.filter(e => e.day >= today);
+  for (const ev of upcoming) {
+    const [yy, mm, dd] = ev.day.split('-').map(Number);
+    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(yy, mm - 1, dd).getDay()];
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="date"></span><span class="txt"><span class="t"></span><span class="by"></span></span>';
+    li.querySelector('.date').textContent = `${wd}\n${dd}.${mm}.`;
+    li.querySelector('.date').style.whiteSpace = 'pre-line';
+    li.querySelector('.t').textContent = ev.title;
+    li.querySelector('.by').textContent = `eingetragen von ${ev.by}`;
+    if (ev.by === account.person) {
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Termin löschen');
+      del.onclick = () => deleteEvent(ev.id);
+      li.appendChild(del);
+    }
+    list.appendChild(li);
+  }
+  $('ev-empty').hidden = upcoming.length > 0;
+}
+
+function openEventForm(day) {
+  $('ev-form').hidden = false;
+  $('ev-day').value = day || isoDay(new Date());
+  $('ev-title').value = '';
+  err('ev-error', '');
+  $('ev-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => $('ev-title').focus({ preventScroll: true }), 300);
+}
+
+$('cal-prev').onclick = () => { calMonth.setMonth(calMonth.getMonth() - 1); renderCal(); };
+$('cal-next').onclick = () => { calMonth.setMonth(calMonth.getMonth() + 1); renderCal(); };
+$('ev-open').onclick = () => openEventForm();
+$('ev-cancel').onclick = () => { $('ev-form').hidden = true; };
+
+$('ev-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('ev-error', '');
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const r = await api('/api/events/add', { day: $('ev-day').value, title: $('ev-title').value });
+    state.events = r.events;
+    $('ev-form').hidden = true;
+    const [yy, mm] = $('ev-day').value.split('-').map(Number);
+    calMonth = new Date(yy, mm - 1, 1);
+    renderCal();
+  } catch (e2) { err('ev-error', e2.message); }
+  finally { if (btn) btn.disabled = false; }
+});
+
+async function deleteEvent(id) {
+  try {
+    const r = await api('/api/events/delete', { id });
+    state.events = r.events;
+    renderCal();
+  } catch (e2) { /* Liste neu laden, falls sich etwas geändert hat */ await load(); }
 }
 
 function err(id, msg) { $(id).textContent = msg; $(id).hidden = !msg; }
@@ -124,9 +282,9 @@ $('auth-forgot').onclick = async () => {
   const t = $('forgot-text');
   if (!name) { t.textContent = 'Gib oben zuerst deinen Namen ein.'; t.hidden = false; return; }
   try {
-    const r = await api('/api/forgot', { username: name });
+    const r = await api('/api/forgot', { username: name, notify: true });
     t.textContent = (r.hint ? `Deine Merkhilfe: „${r.hint}“. ` : '')
-      + 'Wenn du es trotzdem nicht mehr weißt, sag der Organisatorin Bescheid. Sie kann deinen Account zurücksetzen, deine Auslosung und Wünsche bleiben dabei erhalten.';
+      + `Wenn du es trotzdem nicht mehr weißt: ${r.admin} sieht jetzt, dass du ein neues Passwort brauchst, und kann dir eins geben. Deine Auslosung und Wünsche bleiben erhalten.`;
   } catch (e2) { t.textContent = e2.message; }
   t.hidden = false;
 };
