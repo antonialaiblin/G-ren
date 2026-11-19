@@ -54,10 +54,11 @@ function render() {
   $('status-line').textContent = n === total
     ? 'Alle haben ihren Wichtel gesehen. Frohes Shoppen!'
     : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${state.names.filter(x => !opened.has(x)).join(', ')}.`;
-  $('status').hidden = false;
-
   // Leiste unten (Übersicht / Kalender) gibt es erst, wenn man angemeldet ist und weiß, wer man ist
   const inside = !!(account && account.person);
+  // Alles rund ums Wichteln steht nur auf der Home-Seite, nach dem Anmelden
+  $('status').hidden = !inside;
+  $('foot').hidden = !inside;
   $('tabbar').hidden = !inside;
   document.body.classList.toggle('tabs', inside);
   showTab(inside && location.hash === '#kalender' ? 'cal' : 'home');
