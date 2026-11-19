@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { PEOPLE, BUDGET, BESCHERUNG, ROUND, RESET } from './config.js';
+import { PEOPLE, BUDGET, BESCHERUNG, ROUND, RESET, ADMIN } from './config.js';
 import { draw, hashPin } from './draw.js';
 import { pwHash, hashPw, pwOk, newToken, cleanUsername } from './auth.js';
 
@@ -23,6 +23,7 @@ export class Wichtel extends DurableObject {
       s = {
         round: ROUND, names, pairs: draw(names), pins: {}, opened: {}, wishes: {},
         accounts: s?.accounts || {}, sessions: s?.sessions || {}, fails: {}, resets: s?.resets || {},
+        events: s?.events || [],
       };
       changed = true;
     }
@@ -31,6 +32,7 @@ export class Wichtel extends DurableObject {
     s.fails ||= {};
     s.wishes ||= {};
     s.resets ||= {};
+    s.events ||= [];
     // Account einer Person zurücksetzen (Passwort vergessen): Zahl in RESET in config.js erhöhen
     for (const [person, n] of Object.entries(RESET || {})) {
       if ((s.resets[person] || 0) >= n) continue;
@@ -76,6 +78,9 @@ export class Wichtel extends DurableObject {
         opened: Object.keys(s.opened),
         claimed: [...claimed()],
         account: accountInfo(acct),
+        events: me ? s.events : [],
+        admin: ADMIN,
+        isAdmin: me === ADMIN,   // Kalender sehen nur Angemeldete
         budget: BUDGET,
         bescherung: BESCHERUNG,
       });
@@ -133,7 +138,9 @@ export class Wichtel extends DurableObject {
     // ---------- Passwort vergessen: Merkhilfe zeigen ----------
     if (path === '/api/forgot') {
       const a = findAcct(body.username);
-      return json({ hint: a?.hint || null });
+      // Die Admin sieht dann in „Accounts verwalten“, wer ein neues Passwort braucht
+      if (a && body.notify && !a.forgot) { a.forgot = Date.now(); await save(); }
+      return json({ hint: a?.hint || null, admin: ADMIN });
     }
 
     // Ab hier muss man angemeldet sein
@@ -182,6 +189,52 @@ export class Wichtel extends DurableObject {
       s.wishes[me] = { farbe: clean(w.farbe), schnitt: clean(w.schnitt), sonst: clean(w.sonst), at: Date.now() };
       await save();
       return json({ ok: true, mine: s.wishes[me] });
+    }
+
+    // ---------- Accounts verwalten (nur die Admin) ----------
+    if (path.startsWith('/api/admin/')) {
+      if (me !== ADMIN) return json({ error: 'Das darf nur die Admin.' }, 403);
+      const list = () => json({
+        accounts: Object.entries(s.accounts).map(([key, a]) => ({
+          key, username: a.username, person: a.person && s.names.includes(a.person) ? a.person : null, forgot: !!a.forgot,
+        })).sort((x, y) => (x.person || '~').localeCompare(y.person || '~')),
+      });
+      if (path === '/api/admin/accounts') return list();
+      const target = s.accounts[String(body.key || '')];
+      if (!target) return json({ error: 'Diesen Account gibt es nicht.' }, 404);
+      if (path === '/api/admin/password') {
+        if (!pwOk(body.password)) return json({ error: 'Das Passwort braucht mindestens 4 Zeichen.' }, 400);
+        Object.assign(target, await hashPw(body.password), { forgot: null });
+        // Überall abmelden, wo sie mit dem alten Passwort angemeldet war
+        for (const [t, ss] of Object.entries(s.sessions)) if (ss.user === body.key && t !== token) delete s.sessions[t];
+        delete s.fails[body.key];
+        if (target.person) delete s.fails[target.person.toLowerCase()];
+        await save();
+        return list();
+      }
+      return json({ error: 'Nicht gefunden.' }, 404);
+    }
+
+    // ---------- Kalender ----------
+    if (path === '/api/events/add') {
+      const day = String(body.day || '');
+      const title = String(body.title || '').trim().slice(0, 80);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(Date.parse(day))) return json({ error: 'Bitte ein Datum wählen.' }, 400);
+      if (!title) return json({ error: 'Bitte schreib kurz, was los ist.' }, 400);
+      if (s.events.length >= 500) return json({ error: 'Der Kalender ist voll.' }, 400);
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      s.events.push({ id, day, title, by: me, at: Date.now() });
+      s.events.sort((a, b) => a.day.localeCompare(b.day));
+      await save();
+      return json({ ok: true, events: s.events });
+    }
+    if (path === '/api/events/delete') {
+      const ev = s.events.find(e => e.id === body.id);
+      if (!ev) return json({ error: 'Diesen Termin gibt es nicht mehr.' }, 404);
+      if (ev.by !== me) return json({ error: 'Nur wer den Termin eingetragen hat, kann ihn löschen.' }, 403);
+      s.events = s.events.filter(e => e.id !== body.id);
+      await save();
+      return json({ ok: true, events: s.events });
     }
 
     return json({ error: 'Nicht gefunden.' }, 404);

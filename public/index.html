@@ -68,10 +68,14 @@
       </div>
     </section>
 
+    <!-- ===== Seite: Übersicht ===== -->
+    <div id="tab-home" class="tab">
+
     <!-- Angemeldet -->
     <section id="ready" class="card" hidden>
       <h2 id="ready-title">Hallo!</h2>
       <p class="muted" id="ready-hint"></p>
+      <p class="next-ev" id="next-ev" hidden></p>
       <p class="error" id="ready-error" hidden></p>
       <div class="row">
         <button type="button" id="open-go">Umschlag öffnen</button>
@@ -128,8 +132,51 @@
       <p class="muted small" id="status-line"></p>
     </section>
 
+    <!-- Nur für die Admin: Accounts verwalten -->
+    <section class="card" id="admin-box" hidden>
+      <h2>🔑 Accounts verwalten</h2>
+      <p class="muted small">Hier kannst du ein neues Passwort setzen, wenn eine es vergessen hat. Sag es ihr danach, sie kann sich dann direkt damit anmelden.</p>
+      <ul class="acct-list" id="acct-list"></ul>
+      <p class="error" id="admin-error" hidden></p>
+    </section>
+
+    </div>
+
+    <!-- ===== Seite: Kalender ===== -->
+    <div id="tab-cal" class="tab" hidden>
+      <section class="card">
+        <div class="row cal-head">
+          <button type="button" class="ghost icon" id="cal-prev" aria-label="Vorheriger Monat">‹</button>
+          <h2 id="cal-title"></h2>
+          <button type="button" class="ghost icon" id="cal-next" aria-label="Nächster Monat">›</button>
+        </div>
+        <div class="cal" id="cal-grid"></div>
+        <button type="button" class="cal-bar" id="ev-open">+ Termin eintragen</button>
+        <p class="muted small" style="margin:10px 0 0">Tipp: Tippe auf einen Tag, um dort etwas einzutragen.</p>
+      </section>
+
+      <form class="card" id="ev-form" hidden autocomplete="off">
+        <h2>Neuer Termin 📅</h2>
+        <label class="field"><span>Datum</span><input type="date" id="ev-day" required></label>
+        <label class="field"><span>Was ist los?</span><input id="ev-title" maxlength="80" required placeholder="z. B. Wichtel-Abend bei Lilly 🎄"></label>
+        <p class="error" id="ev-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" id="ev-cancel">Abbrechen</button><button type="submit">Eintragen</button></div>
+      </form>
+
+      <section class="card">
+        <h2>Nächste Termine</h2>
+        <ul class="ev-list" id="ev-list"></ul>
+        <p class="muted small" id="ev-empty">Noch nichts geplant. Trag den ersten Termin ein!</p>
+      </section>
+    </div>
+
     <p class="foot small muted">Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
   </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Bereiche" hidden>
+    <a href="#start" data-tab="home"><span aria-hidden="true">🏠</span>Übersicht</a>
+    <a href="#kalender" data-tab="cal"><span aria-hidden="true">📅</span>Kalender</a>
+  </nav>
   <script src="/app.js" type="module"></script>
 </body>
 </html>

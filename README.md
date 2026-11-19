@@ -8,6 +8,8 @@ Die Wichtel-Website der Gören (Milli, Lilly, Emma, Leo, Toni):
 - niemand zieht sich selbst, und die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht
 - nach dem Öffnen trägt jede ihre **Wünsche zu Farben, Schnitt und Sonstigem** ein; die sieht nur, wer sie gezogen hat
 - zeigt, wer schon nachgeschaut hat
+- nach dem Anmelden: Leiste unten mit **🏠 Übersicht** und **📅 Kalender** (gemeinsame Termine eintragen)
+- die Admin (`ADMIN` in `src/config.js`, z. B. Toni) kann unter „Accounts verwalten“ neue Passwörter setzen
 - nach 5 falschen Passwörtern ist der Name 10 Minuten gesperrt
 - lässt sich wie eine App auf den Home-Bildschirm legen
 
@@ -36,7 +38,8 @@ Wer vorher schon mit einer PIN nachgeschaut hat: einfach **Anmelden** mit deinem
 Namen, Größen, Budget und Bescherung stehen in `src/config.js`.
 
 - Größe, Budget oder Bescherung ändern: einfach anpassen, die Auslosung bleibt gleich.
-- **Passwort vergessen**: in `RESET` die Person eintragen, z. B. `{ Lilly: 1 }` (beim nächsten Mal `2`). Ihr Account wird gelöscht,
+- **Passwort vergessen**: Die Admin setzt in der Übersicht unter „🔑 Accounts verwalten“ ein neues Passwort.
+- Notfall, falls die Admin selbst nicht mehr reinkommt: in `RESET` die Person eintragen, z. B. `{ Lilly: 1 }` (beim nächsten Mal `2`). Ihr Account wird gelöscht,
   sie registriert sich neu und wählt wieder ihren Namen. Auslosung und Wünsche bleiben.
 - **Neu auslosen** (z. B. wenn jemand dazukommt): `ROUND` ändern, etwa auf `'2026-b'`.
   Dann wird neu gezogen, Wünsche und „hat geschaut“ starten neu. Die Accounts bleiben. Kommt jemand dazu oder fällt weg, wird ebenfalls neu gezogen.
