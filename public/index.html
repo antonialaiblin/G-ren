@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gören</title>
-  <meta name="description" content="Wichteln der Gören: Namen antippen, PIN festlegen, geheimen Wichtel sehen.">
+  <meta name="description" content="Wichteln der Gören: anmelden, Namen wählen, geheimen Wichtel sehen.">
   <meta name="theme-color" content="#2f6f5e">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
@@ -27,26 +27,57 @@
   <main>
     <p class="error card" id="load-error" hidden>Die Seite konnte nicht geladen werden. Prüf dein Internet und lade neu.</p>
 
-    <!-- Wer bist du? -->
-    <section id="pick" class="card" hidden>
-      <h2>Wer bist du? 🎁</h2>
-      <p class="muted">Tipp auf deinen Namen. Du siehst nur, wen du selbst beschenkst.</p>
-      <div class="people" id="people"></div>
+    <!-- Anmelden / Registrieren, wie in der Zentrale -->
+    <section id="auth" class="card" hidden>
+      <div id="auth-start">
+        <h2>Willkommen bei den Gören 👋</h2>
+        <p class="muted">Hast du schon einen Account?</p>
+        <div class="auth-choice">
+          <button type="button" id="go-login">Anmelden</button>
+          <button type="button" class="ghost" id="go-register">Registrieren</button>
+        </div>
+      </div>
+
+      <form id="login-form" hidden>
+        <h2>Anmelden</h2>
+        <label class="field"><span>Name</span><input id="login-user" maxlength="30" autocomplete="username" autocapitalize="none" required></label>
+        <label class="field"><span>Passwort</span><input type="password" id="login-pw" maxlength="100" autocomplete="current-password" required></label>
+        <p class="small" style="margin-top:10px"><button type="button" class="link" id="auth-forgot">Passwort vergessen?</button></p>
+        <p class="muted small" id="forgot-text" hidden></p>
+        <p class="error" id="login-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" data-auth-back>Zurück</button><button type="submit">Anmelden</button></div>
+      </form>
+
+      <form id="register-form" hidden>
+        <h2>Account erstellen</h2>
+        <p class="muted small">Mit diesem Namen und Passwort meldest du dich später an.</p>
+        <label class="field"><span>Benutzername</span><input id="reg-user" maxlength="30" minlength="2" autocomplete="username" autocapitalize="none" required></label>
+        <label class="field"><span>Passwort (mind. 4 Zeichen)</span><input type="password" id="reg-pw" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+        <label class="field"><span>Passwort wiederholen</span><input type="password" id="reg-pw2" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+        <label class="field"><span>Merkhilfe fürs Passwort (optional, nicht das Passwort selbst!)</span><input id="reg-hint" maxlength="100" placeholder="z. B. Name vom ersten Haustier + Jahr"></label>
+        <p class="error" id="reg-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" data-auth-back>Zurück</button><button type="submit">Weiter</button></div>
+      </form>
+
+      <div id="auth-pick" hidden>
+        <h2>Wer bist du? 🎁</h2>
+        <p class="muted">Wähl deinen Namen. Er wird fest mit deinem Account verbunden und kann danach von niemand anderem mehr gewählt werden.</p>
+        <div class="people" id="people"></div>
+        <p class="error" id="pick-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" data-logout>Abmelden</button></div>
+      </div>
     </section>
 
-    <!-- PIN -->
-    <form id="pin-form" class="card" hidden autocomplete="off">
-      <h2 id="pin-title">Hallo!</h2>
-      <p class="muted" id="pin-hint"></p>
-      <label class="field"><span>PIN (4 Ziffern)</span>
-        <input id="pin" inputmode="numeric" pattern="\d{4}" maxlength="4" autocomplete="off" required>
-      </label>
-      <p class="error" id="pin-error" hidden></p>
+    <!-- Angemeldet -->
+    <section id="ready" class="card" hidden>
+      <h2 id="ready-title">Hallo!</h2>
+      <p class="muted" id="ready-hint"></p>
+      <p class="error" id="ready-error" hidden></p>
       <div class="row">
-        <button type="submit" id="pin-go">Umschlag öffnen</button>
-        <button type="button" class="ghost" id="pin-back">Das bin ich nicht</button>
+        <button type="button" id="open-go">Umschlag öffnen</button>
+        <button type="button" class="ghost" data-logout>Abmelden</button>
       </div>
-    </form>
+    </section>
 
     <!-- Brief -->
     <section id="reveal" hidden>
@@ -88,7 +119,7 @@
         </div>
       </form>
 
-      <div class="center"><button type="button" class="ghost" id="logout">Fertig, abmelden</button></div>
+      <div class="center"><button type="button" class="ghost" id="close-reveal">Brief schließen</button></div>
     </section>
 
     <section class="card" id="status" hidden>
