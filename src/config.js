@@ -15,3 +15,8 @@ export const BESCHERUNG = '';
 // Runde ändern (z. B. '2026-b'), um komplett neu auszulosen.
 // Dann werden auch alle PINs zurückgesetzt.
 export const ROUND = '2026';
+
+// Passwort vergessen? Hier die Person eintragen und die Zahl um 1 erhöhen,
+// z. B. { Lilly: 1 }. Dann ist ihr Account gelöscht und sie kann sich neu registrieren.
+// Ihre Auslosung und ihre Wünsche bleiben erhalten. Beim nächsten Mal: { Lilly: 2 }.
+export const RESET = {};
