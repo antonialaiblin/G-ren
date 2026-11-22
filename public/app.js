@@ -72,7 +72,7 @@ function render() {
   const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
   // Auf der Übersicht steht das große Logo, da braucht es die Kopfzeile nicht
-  document.body.classList.toggle('home-in', inside && tab === 'home');
+  document.body.classList.toggle('home-in', inside);
   if (inside) { renderSettings(); renderChats(); }
   if (tab !== 'chat' && openChat) leaveChat();
   if (inside) renderCal();
@@ -1301,7 +1301,6 @@ function reveal(r) {
   $('auth').hidden = true;
   $('ready').hidden = true;
   $('wichtel').hidden = true;
-  document.body.classList.remove('home-in');
   $('reveal').hidden = false;
   $('who').textContent = r.to;
   const pills = $('pills');
