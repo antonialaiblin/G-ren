@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
-import { PEOPLE, BUDGET, BESCHERUNG, ROUND, RESET, ADMIN } from './config.js';
+import { PEOPLE, BUDGET, BESCHERUNG, ROUND, RESET, ADMIN, FRIENDSMAS } from './config.js';
 import { draw, hashPin } from './draw.js';
 import { pwHash, hashPw, pwOk, newToken, cleanUsername } from './auth.js';
+import { newVapidKeys, sendPush, pushEndpointOk } from './push.js';
 
 const MAX_TRIES = 5;          // falsche Passwörter, bevor gesperrt wird
 const LOCK_MS = 10 * 60_000;  // 10 Minuten Sperre
@@ -33,6 +34,24 @@ export class Wichtel extends DurableObject {
     s.wishes ||= {};
     s.resets ||= {};
     s.events ||= [];
+    s.push ||= {};
+    s.polls ||= [];
+    s.chats ||= [];
+    // Der große Gören-Chat mit allen
+    const all = s.chats.find(c => c.id === 'all');
+    if (!all) { s.chats.unshift({ id: 'all', name: 'Gören-Chat 💬', members: [...s.names], at: Date.now() }); changed = true; }
+    else if (all.members.join('|') !== s.names.join('|')) { all.members = [...s.names]; changed = true; }
+    s.finds ||= [];   // „Wann könnt ihr?“-Abstimmungen für den Kalender
+    s.seeded ||= {};
+    // Friendsmas steht automatisch im Kalender (nur einmal, danach kann Toni ihn wie jeden Termin löschen)
+    if (FRIENDSMAS && !s.seeded[FRIENDSMAS]) {
+      if (!s.events.some(e => e.day === FRIENDSMAS && /friendsmas/i.test(e.title))) {
+        s.events.push({ id: `friendsmas-${FRIENDSMAS}`, day: FRIENDSMAS, title: 'Friendsmas 🎄🎁', by: ADMIN, at: Date.now() });
+        s.events.sort((a, b) => a.day.localeCompare(b.day));
+      }
+      s.seeded[FRIENDSMAS] = true;
+      changed = true;
+    }
     // Account einer Person zurücksetzen (Passwort vergessen): Zahl in RESET in config.js erhöhen
     for (const [person, n] of Object.entries(RESET || {})) {
       if ((s.resets[person] || 0) >= n) continue;
@@ -70,7 +89,27 @@ export class Wichtel extends DurableObject {
       s.sessions[t] = { user: key, at: Date.now() };
       return t;
     };
-    const accountInfo = (a) => a ? { username: a.username, person: a.person && s.names.includes(a.person) ? a.person : null } : null;
+    const accountInfo = (a) => a ? {
+      username: a.username,
+      person: a.person && s.names.includes(a.person) ? a.person : null,
+      display: a.display || null,   // selbst gewählter Name für „Hallo …“
+    } : null;
+    // Benachrichtigung an alle anderen schicken, die sie angeschaltet haben
+    // onlyFor: nur an diese Personen (z. B. die Mitglieder eines Chats)
+    const notify = async (msg, onlyFor = null, link = '/#kalender') => {
+      if (!s.vapid) return;
+      const subs = Object.entries(s.push).filter(([, p]) => {
+        const who = s.accounts[p.user]?.person;
+        return who !== me && (!onlyFor || onlyFor.includes(who));
+      });
+      if (!subs.length) return;
+      for (const [, p] of subs) p.msg = { text: msg, at: Date.now(), link };
+      await save();
+      const ok = await Promise.all(subs.map(([ep]) => sendPush(s.vapid, ep, url.origin)));
+      let gone = false;
+      subs.forEach(([ep], i) => { if (!ok[i]) { delete s.push[ep]; gone = true; } });
+      if (gone) await save();
+    };
 
     if (path === '/api/state' && request.method === 'GET') {
       return json({
@@ -79,11 +118,40 @@ export class Wichtel extends DurableObject {
         claimed: [...claimed()],
         account: accountInfo(acct),
         events: me ? s.events : [],
+        polls: me ? s.polls : [],
+        finds: me ? s.finds : [],
+        people: me ? people() : {},
+        chats: me ? myChats() : [],
         admin: ADMIN,
         isAdmin: me === ADMIN,   // Kalender sehen nur Angemeldete
         budget: BUDGET,
         bescherung: BESCHERUNG,
+        friendsmas: FRIENDSMAS,
       });
+    }
+
+    // Profil-Infos aller (Anzeigename, Geburtstag, ob es ein Profilbild gibt)
+    function people() {
+      const out = {};
+      for (const a of Object.values(s.accounts)) {
+        if (!a.person || !s.names.includes(a.person)) continue;
+        out[a.person] = { display: a.display || a.person, birthday: a.birthday || null, year: a.year || null, avatar: a.avatar || 0 };
+      }
+      return out;
+    }
+    function myChats() {
+      return s.chats.filter(c => c.members.includes(me)).map(c => ({
+        id: c.id, name: c.name, members: c.members, by: c.by || null, last: c.last || null,
+      })).sort((a, b) => (b.last?.at || 0) - (a.last?.at || 0));
+    }
+
+    // ---------- Benachrichtigung abholen (fragt das Handy selbst, nachdem es geweckt wurde) ----------
+    if (path === '/api/push/latest' && request.method === 'POST') {
+      let b = {};
+      try { b = await request.json(); } catch {}
+      const p = s.push[String(b.endpoint || '')];
+      const msg = p?.msg && Date.now() - p.msg.at < 2 * 86400_000 ? p.msg.text : null;
+      return json({ text: msg || 'Es gibt Neuigkeiten bei den Gören.', link: p?.msg?.link || '/' });
     }
 
     if (request.method !== 'POST') return json({ error: 'Nicht gefunden.' }, 404);
@@ -152,6 +220,46 @@ export class Wichtel extends DurableObject {
       return json({ ok: true });
     }
 
+    // ---------- Einstellungen: eigener Name ----------
+    if (path === '/api/me/name') {
+      const name = cleanUsername(body.name);
+      if (name.length < 2) return json({ error: 'Der Name braucht mindestens 2 Zeichen.' }, 400);
+      acct.display = name;
+      await save();
+      return json({ ok: true, account: accountInfo(acct) });
+    }
+
+    // ---------- Einstellungen: eigenes Passwort ----------
+    if (path === '/api/me/password') {
+      if (typeof body.old !== 'string' || (await pwHash(body.old, acct.salt)) !== acct.hash)
+        return json({ error: 'Dein jetziges Passwort stimmt nicht.' }, 400);
+      if (!pwOk(body.password)) return json({ error: 'Das neue Passwort braucht mindestens 4 Zeichen.' }, 400);
+      Object.assign(acct, await hashPw(body.password), { forgot: null });
+      // Auf anderen Geräten abmelden, hier angemeldet bleiben
+      for (const [t, ss] of Object.entries(s.sessions)) if (ss.user === sess.user && t !== token) delete s.sessions[t];
+      await save();
+      return json({ ok: true });
+    }
+
+    // ---------- Einstellungen: Benachrichtigungen ----------
+    if (path === '/api/push/key') {
+      if (!s.vapid) { s.vapid = await newVapidKeys(); await save(); }
+      return json({ key: s.vapid.publicKey });
+    }
+    if (path === '/api/push/subscribe') {
+      const ep = String(body.subscription?.endpoint || '');
+      if (!pushEndpointOk(ep)) return json({ error: 'Dieses Handy kann leider keine Benachrichtigungen empfangen.' }, 400);
+      if (!s.push[ep] && Object.keys(s.push).length >= 100) return json({ error: 'Zu viele Geräte angemeldet.' }, 400);
+      s.push[ep] = { user: sess.user, at: Date.now() };
+      await save();
+      return json({ ok: true });
+    }
+    if (path === '/api/push/unsubscribe') {
+      const ep = String(body.endpoint || '');
+      if (s.push[ep]?.user === sess.user) { delete s.push[ep]; await save(); }
+      return json({ ok: true });
+    }
+
     // ---------- Person wählen ("Wer bist du?") ----------
     if (path === '/api/claim') {
       if (me) return json({ error: 'Dein Account ist schon mit einer Person verbunden.' }, 400);
@@ -164,6 +272,85 @@ export class Wichtel extends DurableObject {
     }
 
     if (!me) return json({ error: 'Bitte wähl zuerst aus, wer du bist.' }, 403);
+
+    // ---------- Profil: Geburtstag ----------
+    if (path === '/api/me/profile') {
+      const md = String(body.birthday || '');
+      const m = /^(\d{2})-(\d{2})$/.exec(md);
+      const ok = m && !isNaN(Date.parse(`2000-${md}`)) && new Date(`2000-${md}`).getUTCDate() === Number(m[2]);
+      if (!ok) return json({ error: 'Bitte Tag und Monat von deinem Geburtstag wählen.' }, 400);
+      const y = body.year ? Number(body.year) : null;
+      if (y !== null && !(Number.isInteger(y) && y >= 1920 && y <= new Date().getFullYear())) return json({ error: 'Das Geburtsjahr stimmt nicht.' }, 400);
+      acct.birthday = md;
+      acct.year = y;
+      await save();
+      return json({ ok: true, people: people() });
+    }
+
+    // ---------- Profil: Profilbild ----------
+    if (path === '/api/me/avatar') {
+      const img = body.image;
+      if (img === null) {
+        await this.ctx.storage.delete(`avatar:${me}`);
+        acct.avatar = 0;
+      } else {
+        if (typeof img !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > 300_000)
+          return json({ error: 'Das Bild ist zu groß oder kein Bild.' }, 400);
+        await this.ctx.storage.put(`avatar:${me}`, img);
+        acct.avatar = Date.now();
+      }
+      await save();
+      return json({ ok: true, people: people() });
+    }
+    if (path === '/api/avatar') {
+      const img = s.names.includes(body.person) ? await this.ctx.storage.get(`avatar:${body.person}`) : null;
+      return json({ image: img || null });
+    }
+
+    // ---------- Chat ----------
+    const chat = s.chats.find(c => c.id === body.chat && c.members.includes(me));
+    if (path === '/api/chats/add') {
+      const name = String(body.name || '').trim().slice(0, 60);
+      if (!name) return json({ error: 'Bitte gib dem Chat einen Namen.' }, 400);
+      const members = [...new Set([me, ...(Array.isArray(body.members) ? body.members : [])])].filter(n => s.names.includes(n));
+      if (members.length < 2) return json({ error: 'Bitte wähl mindestens eine weitere Person aus.' }, 400);
+      if (s.chats.length >= 60) return json({ error: 'Es gibt schon zu viele Chats. Lösch erst einen alten.' }, 400);
+      const c = { id: newId(), name, members: s.names.filter(n => members.includes(n)), by: me, at: Date.now() };
+      s.chats.push(c);
+      await save();
+      await notify(`💬 ${acct.display || me} hat dich in den Chat „${name}“ geholt.`, c.members, '/#chat');
+      return json({ ok: true, chats: myChats(), id: c.id });
+    }
+    if (path === '/api/chats/delete') {
+      if (!chat || chat.id === 'all') return json({ error: 'Diesen Chat kann man nicht löschen.' }, 400);
+      if (chat.by !== me) return json({ error: 'Nur wer den Chat erstellt hat, kann ihn löschen.' }, 403);
+      s.chats = s.chats.filter(c => c.id !== chat.id);
+      await this.ctx.storage.delete(`chat:${chat.id}`);
+      await save();
+      return json({ ok: true, chats: myChats() });
+    }
+    if (path === '/api/chat/messages') {
+      if (!chat) return json({ error: 'Diesen Chat gibt es nicht (mehr).' }, 404);
+      const msgs = (await this.ctx.storage.get(`chat:${chat.id}`)) || [];
+      const since = Number(body.since) || 0;
+      return json({ messages: msgs.filter(x => x.at > since), chats: myChats() });
+    }
+    if (path === '/api/chat/send') {
+      if (!chat) return json({ error: 'Diesen Chat gibt es nicht (mehr).' }, 404);
+      const text = String(body.text || '').trim().slice(0, 2000);
+      if (!text) return json({ error: 'Schreib erst etwas.' }, 400);
+      const msgs = (await this.ctx.storage.get(`chat:${chat.id}`)) || [];
+      const last = msgs.length ? msgs[msgs.length - 1].at : 0;
+      const msg = { id: newId(), from: me, text, at: Math.max(Date.now(), last + 1) };
+      msgs.push(msg);
+      if (msgs.length > 1000) msgs.splice(0, msgs.length - 1000);
+      chat.last = { at: msg.at, from: me, text: text.slice(0, 80) };
+      await this.ctx.storage.put(`chat:${chat.id}`, msgs);
+      await save();
+      const short = text.length > 80 ? text.slice(0, 80) + '…' : text;
+      await notify(`💬 ${acct.display || me} (${chat.name}): ${short}`, chat.members, '/#chat');
+      return json({ ok: true, message: msg });
+    }
 
     // ---------- Umschlag öffnen ----------
     if (path === '/api/reveal') {
@@ -218,14 +405,19 @@ export class Wichtel extends DurableObject {
     // ---------- Kalender ----------
     if (path === '/api/events/add') {
       const day = String(body.day || '');
+      const end = body.end ? String(body.end) : '';
       const title = String(body.title || '').trim().slice(0, 80);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(Date.parse(day))) return json({ error: 'Bitte ein Datum wählen.' }, 400);
+      if (!isDay(day)) return json({ error: 'Bitte ein Datum wählen.' }, 400);
+      if (end && (!isDay(end) || end < day)) return json({ error: 'Das Ende muss nach dem Anfang liegen.' }, 400);
       if (!title) return json({ error: 'Bitte schreib kurz, was los ist.' }, 400);
       if (s.events.length >= 500) return json({ error: 'Der Kalender ist voll.' }, 400);
-      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      s.events.push({ id, day, title, by: me, at: Date.now() });
+      const id = newId();
+      s.events.push({ id, day, ...(end && end !== day ? { end } : {}), title, by: me, at: Date.now() });
       s.events.sort((a, b) => a.day.localeCompare(b.day));
       await save();
+      const [, mm, dd] = day.split('-').map(Number);
+      const who = acct.display || me;
+      await notify(`📅 ${who} hat einen Termin eingetragen: ${dd}.${mm}. ${title}`);
       return json({ ok: true, events: s.events });
     }
     if (path === '/api/events/delete') {
@@ -237,9 +429,105 @@ export class Wichtel extends DurableObject {
       return json({ ok: true, events: s.events });
     }
 
+    // ---------- „Wann könnt ihr?“ ----------
+    if (path === '/api/finds/add') {
+      const title = String(body.title || '').trim().slice(0, 80);
+      if (!title) return json({ error: 'Bitte schreib kurz, worum es geht.' }, 400);
+      const opts = (Array.isArray(body.options) ? body.options : []).slice(0, 20)
+        .map(o => ({ day: String(o?.day || ''), end: String(o?.end || o?.day || '') }))
+        .filter(o => isDay(o.day) && isDay(o.end) && o.end >= o.day);
+      if (opts.length < 2) return json({ error: 'Bitte mindestens zwei mögliche Termine angeben.' }, 400);
+      if (s.finds.length >= 50) return json({ error: 'Es gibt schon zu viele Abstimmungen.' }, 400);
+      s.finds.unshift({ id: newId(), title, by: me, options: opts, answers: {}, at: Date.now() });
+      await save();
+      await notify(`🗳️ ${acct.display || me} fragt: Wann könnt ihr? „${title}“`);
+      return json({ ok: true, finds: s.finds, events: s.events });
+    }
+    if (path === '/api/finds/answer') {
+      const f = s.finds.find(x => x.id === body.id);
+      if (!f) return json({ error: 'Diese Abstimmung gibt es nicht mehr.' }, 404);
+      if (f.done) return json({ error: 'Der Termin steht schon fest.' }, 400);
+      const picks = [...new Set((Array.isArray(body.picks) ? body.picks : []).filter(i => Number.isInteger(i) && i >= 0 && i < f.options.length))];
+      f.answers[me] = picks;
+      // Haben alle geantwortet und gibt es einen Termin, an dem alle können? Dann ab in den Kalender.
+      let added = null;
+      if (s.names.every(n => f.answers[n])) {
+        const i = f.options.findIndex((_, k) => s.names.every(n => f.answers[n].includes(k)));
+        if (i >= 0) {
+          const o = f.options[i];
+          added = { id: newId(), day: o.day, ...(o.end !== o.day ? { end: o.end } : {}), title: f.title, by: f.by, at: Date.now() };
+          s.events.push(added);
+          s.events.sort((a, b) => a.day.localeCompare(b.day));
+          f.done = { option: i, event: added.id };
+        }
+      }
+      await save();
+      if (added) {
+        const [, mm, dd] = added.day.split('-').map(Number);
+        await notify(`🎉 Alle können! „${f.title}“ steht jetzt am ${dd}.${mm}. im Kalender.`);
+      }
+      return json({ ok: true, finds: s.finds, events: s.events, added: !!added });
+    }
+    if (path === '/api/finds/delete') {
+      const f = s.finds.find(x => x.id === body.id);
+      if (!f) return json({ error: 'Diese Abstimmung gibt es nicht mehr.' }, 404);
+      if (f.by !== me) return json({ error: 'Nur wer gefragt hat, kann die Abstimmung löschen.' }, 403);
+      s.finds = s.finds.filter(x => x.id !== body.id);
+      await save();
+      return json({ ok: true, finds: s.finds, events: s.events });
+    }
+
+    // ---------- Umfragen ----------
+    const cleanOpt = (t) => String(t || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (path === '/api/polls/add') {
+      const q = String(body.question || '').trim().slice(0, 120);
+      if (!q) return json({ error: 'Bitte schreib deine Frage auf.' }, 400);
+      const ideas = !!body.ideas;   // true: jede darf Ideen reintippen
+      const opts = [...new Set((Array.isArray(body.options) ? body.options : []).map(cleanOpt).filter(Boolean))].slice(0, 20);
+      if (!ideas && opts.length < 2) return json({ error: 'Bitte mindestens zwei Vorschläge eintragen.' }, 400);
+      if (s.polls.length >= 50) return json({ error: 'Es gibt schon zu viele Umfragen. Lösch erst eine alte.' }, 400);
+      s.polls.unshift({ id: newId(), q, ideas, by: me, options: opts.map(t => ({ id: newId(), t, by: me, votes: [] })), at: Date.now() });
+      await save();
+      await notify(`📊 ${acct.display || me} fragt: ${q}`, null, '/');
+      return json({ ok: true, polls: s.polls });
+    }
+    const poll = s.polls.find(x => x.id === body.id);
+    if (path.startsWith('/api/polls/') && !poll) return json({ error: 'Diese Umfrage gibt es nicht mehr.' }, 404);
+    if (path === '/api/polls/idea') {
+      if (!poll.ideas && poll.by !== me) return json({ error: 'Bei dieser Umfrage kann man nur auswählen.' }, 400);
+      if (poll.closed) return json({ error: 'Die Umfrage ist schon beendet.' }, 400);
+      const t = cleanOpt(body.text);
+      if (!t) return json({ error: 'Bitte schreib deine Idee auf.' }, 400);
+      if (poll.options.length >= 30) return json({ error: 'Es gibt schon genug Ideen.' }, 400);
+      if (!poll.options.some(o => o.t.toLowerCase() === t.toLowerCase())) poll.options.push({ id: newId(), t, by: me, votes: [me] });
+      await save();
+      return json({ ok: true, polls: s.polls });
+    }
+    if (path === '/api/polls/vote') {
+      if (poll.closed) return json({ error: 'Die Umfrage ist schon beendet.' }, 400);
+      const o = poll.options.find(x => x.id === body.option);
+      if (!o) return json({ error: 'Diese Antwort gibt es nicht mehr.' }, 404);
+      const had = o.votes.includes(me);
+      // Eine Stimme pro Person: Tippen auf die eigene Wahl nimmt sie zurück
+      for (const x of poll.options) x.votes = x.votes.filter(v => v !== me);
+      if (!had) o.votes.push(me);
+      await save();
+      return json({ ok: true, polls: s.polls });
+    }
+    if (path === '/api/polls/close' || path === '/api/polls/delete') {
+      if (poll.by !== me) return json({ error: 'Nur wer die Umfrage gestartet hat, kann das.' }, 403);
+      if (path === '/api/polls/close') poll.closed = Date.now();
+      else s.polls = s.polls.filter(x => x.id !== poll.id);
+      await save();
+      return json({ ok: true, polls: s.polls });
+    }
+
     return json({ error: 'Nicht gefunden.' }, 404);
   }
 }
+
+const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d));
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export default {
   async fetch(request, env) {

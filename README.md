@@ -1,6 +1,16 @@
 # Gören 🎁
 
-Die Wichtel-Website der Gören (Milli, Lilly, Emma, Leo, Toni):
+Die App der Gören (Milli, Lilly, Emma, Leo, Toni). Nach dem Anmelden kommt die **Übersicht**:
+
+- oben das Logo und „Hallo Toni!“ (bzw. der eigene Name, mit Profilbild)
+- beim ersten Anmelden trägt jede einmal ihren **Geburtstag** ein; er steht dann jedes Jahr automatisch im Kalender
+- **Profil & Einstellungen**: Profilbild, Geburtstag, eigenen Namen und Passwort ändern, Ansicht hell, dunkel oder automatisch (nach Sonnenauf- und -untergang in Berlin), Benachrichtigungen an/aus
+- der **Wichtel-Brief** im Weihnachtsstil; antippen öffnet ihn. Nach Friendsmas (`FRIENDSMAS` in `src/config.js`, 12.12.) verschwindet er
+- **Umfragen**: mit Vorschlägen zum Auswählen oder offen für Ideen von allen
+- im **Kalender** Termine mit festem Datum (auch mehrtägig, z. B. Urlaub) oder als „Wann könnt ihr?“-Abstimmung; sobald alle an einem Termin können, steht er im Kalender
+- **💬 Chat** (rechts neben dem Kalender): der Gören-Chat mit allen, dazu eigene Unterchats, z. B. „Geschenk für Lilly“ ohne Lilly
+
+Wichteln:
 
 - **ein Link für die ganze Gruppe**: jede tippt auf ihren Namen
 - **Anmelden und Registrieren mit Name und Passwort**, wie in der Zentrale; danach wählt man einmal, wer man ist
