@@ -15,8 +15,23 @@
   --radius: 14px;
   color-scheme: light;
 }
+/* Dunkel: per Einstellung (data-theme kommt aus theme.js); ohne JavaScript wie das Handy */
+:root[data-theme="dark"] {
+    --bg: #151816;
+    --card: #1e2220;
+    --text: #ecefed;
+    --muted: #9aa29d;
+    --line: #2f3532;
+    --accent: #6cc3a7;
+    --accent-soft: #23332d;
+    --accent-text: #0f1a16;
+    --berry: #d9506c;
+    --letter: #262b28;
+    --warn: #e7926a;
+    color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #151816;
     --card: #1e2220;
     --text: #ecefed;
@@ -36,6 +51,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
+  transition: background-color .4s, color .4s;
   background: var(--bg);
   color: var(--text);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -197,3 +213,115 @@ button.icon { width: 44px; height: 44px; padding: 0; font-size: 24px; line-heigh
 .acct-list .pw-row { display: flex; gap: 8px; margin-top: 8px; }
 .acct-list .pw-row input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .acct-list .ok { color: var(--accent); font-weight: 600; font-size: 13px; margin-top: 6px; }
+
+/* ---------- Übersicht: Logo und Begrüßung ---------- */
+body.home-in .top { display: none; }
+.hello { text-align: center; padding: calc(24px + env(safe-area-inset-top)) 0 4px; }
+.hello-logo { width: 112px; height: 112px; border-radius: 28px; box-shadow: 0 8px 24px rgba(0,0,0,.12); display: block; margin: 0 auto 14px; }
+.hello h2 { font-size: 26px; margin: 0 0 12px; letter-spacing: -0.01em; }
+.hello .next-ev { text-align: left; margin: 0; }
+
+/* ---------- Einstellungen ---------- */
+details.set { border-top: 1px solid var(--line); }
+details.set summary { cursor: pointer; padding: 12px 0; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 6px; }
+details.set summary::-webkit-details-marker { display: none; }
+details.set summary::after { content: "›"; margin-left: auto; font-size: 22px; color: var(--muted); transition: transform .2s; }
+details.set[open] summary::after { transform: rotate(90deg); }
+details.set form { padding-bottom: 12px; }
+.set-row { border-top: 1px solid var(--line); padding: 12px 0; }
+.set-row p { margin: 6px 0 0; }
+.set-label { font-weight: 600; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; background: var(--bg); border-radius: 12px; padding: 4px; }
+.seg button { background: transparent; color: var(--text); font-weight: 500; padding: 8px 4px; font-size: 14px; }
+.seg button.on { background: var(--card); color: var(--accent); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+input.switch {
+  appearance: none; -webkit-appearance: none; flex: none; width: 52px; height: 32px; border-radius: 99px; margin: 0;
+  background: var(--line); position: relative; cursor: pointer; transition: background .2s;
+}
+input.switch::before {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s;
+}
+input.switch:checked { background: var(--accent); }
+input.switch:checked::before { transform: translateX(20px); }
+input.switch:disabled { opacity: .5; cursor: default; }
+input.switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Wichtel-Brief im Weihnachtsstil ---------- */
+.card.xmas {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255,255,255,.9) 0 2px, transparent 3px),
+    radial-gradient(circle at 82% 12%, rgba(255,255,255,.8) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 70% 82%, rgba(255,255,255,.8) 0 2px, transparent 3px),
+    radial-gradient(circle at 25% 88%, rgba(255,255,255,.7) 0 1.5px, transparent 2.5px),
+    linear-gradient(160deg, #1f4d40, #2f6f5e);
+  color: #fff; border-color: transparent;
+}
+.card.xmas h2 { color: #fff; }
+.card.xmas .muted { color: rgba(255,255,255,.85); }
+.card.xmas .error { color: #ffd2a8; }
+button.envelope {
+  display: block; margin: 8px auto 12px; padding: 0; border: 0; background: none; border-radius: 14px;
+  width: min(100%, 300px); cursor: pointer; font: inherit; color: inherit;
+  transition: transform .2s;
+}
+button.envelope:hover { transform: translateY(-2px) rotate(-1deg); }
+button.envelope.new { animation: wiggle 2.4s ease-in-out infinite; }
+@keyframes wiggle { 0%, 80%, 100% { transform: rotate(0); } 85% { transform: rotate(-3deg); } 90% { transform: rotate(3deg); } 95% { transform: rotate(-2deg); } }
+.envelope .back, .envelope .flap, .envelope .front::before { box-shadow: inset 0 0 0 3px rgba(242,193,78,.55); }
+.envelope .addr {
+  position: absolute; left: 0; right: 0; bottom: 12%; z-index: 4; text-align: center; pointer-events: none;
+  font-family: "Snell Roundhand", "Segoe Script", "Brush Script MT", cursive; font-size: 20px; color: #fff3d6;
+  transition: opacity .3s;
+}
+.envelope .addr b { font-weight: 700; }
+.envelope .stamp {
+  position: absolute; top: 8px; right: 10px; z-index: 4; width: 34px; height: 40px; display: grid; place-items: center;
+  background: #fffdf8; border: 2px dashed var(--berry); border-radius: 3px; font-size: 20px; transform: rotate(6deg);
+  transition: opacity .3s;
+}
+.envelope.open .addr, .envelope.open .stamp { opacity: 0; }
+.envelope .seal { color: #8a1f35; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+@media (prefers-reduced-motion: reduce) { button.envelope.new { animation: none; } }
+
+/* ---------- Umfragen und „Wann könnt ihr?“ ---------- */
+.head-row { justify-content: space-between; flex-wrap: nowrap; }
+.head-row h2 { margin: 0; }
+button.small-btn { padding: 7px 12px; font-size: 14px; flex: none; }
+.sub-form { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
+.seg.two { grid-template-columns: 1fr 1fr; margin-top: 12px; }
+.two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.two-col .field input { padding: 10px 8px; }
+.opt { margin-top: 2px; }
+.opt + .opt { border-top: 1px dashed var(--line); }
+.sub-form button.link, #ev-find button.link { margin-top: 10px; }
+.poll, .find { border-top: 1px solid var(--line); padding: 12px 0 4px; margin-top: 12px; }
+#find-list .find:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
+.find-head { margin-bottom: 8px; overflow-wrap: anywhere; }
+.poll .opts, .find .opts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.poll .status, .find .status { margin: 8px 0 0; }
+.poll .acts, .find .acts { margin-top: 8px; }
+.poll .acts button, .find .acts button { padding: 7px 12px; font-size: 14px; }
+.poll .who, .find .who { display: block; margin: 2px 2px 0; }
+button.vote {
+  position: relative; overflow: hidden; width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 500;
+}
+button.vote .bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-soft); transition: width .3s; z-index: 0; }
+button.vote .txt, button.vote .n { position: relative; z-index: 1; }
+button.vote .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+button.vote .n { font-weight: 700; color: var(--accent); }
+button.vote.mine { border-color: var(--accent); font-weight: 700; }
+button.vote.top { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+button.vote:disabled { opacity: 1; cursor: default; }
+.poll.closed .find-head b::after { content: " · beendet"; color: var(--muted); font-weight: 500; font-size: 13px; }
+.idea-row { display: flex; gap: 8px; margin-top: 8px; }
+.idea-row input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.idea-row button { padding: 8px 14px; }
+.find .opts label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.find .opts input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
+.find .opts .when { font-weight: 600; }
+.find .opts .who { flex-basis: 100%; margin: 0 0 0 30px; }
+.find .opts li.all label { border-color: var(--accent); }
+.find .opts li.win label { background: var(--accent-soft); border-color: var(--accent); }

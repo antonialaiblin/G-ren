@@ -23,3 +23,6 @@ export const ADMIN = 'Toni';
 // z. B. { Lilly: 1 }. Dann ist ihr Account gelöscht und sie kann sich neu registrieren.
 // Ihre Auslosung und ihre Wünsche bleiben erhalten. Beim nächsten Mal: { Lilly: 2 }.
 export const RESET = {};
+
+// Friendsmas: steht automatisch im Kalender. Am Tag danach verschwindet der Wichtel-Brief von der Übersicht.
+export const FRIENDSMAS = '2026-12-12';

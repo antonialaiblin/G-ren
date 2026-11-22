@@ -56,12 +56,22 @@ function render() {
     : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${state.names.filter(x => !opened.has(x)).join(', ')}.`;
   // Leiste unten (Übersicht / Kalender) gibt es erst, wenn man angemeldet ist und weiß, wer man ist
   const inside = !!(account && account.person);
-  // Alles rund ums Wichteln steht nur auf der Home-Seite, nach dem Anmelden
-  $('status').hidden = !inside;
-  $('foot').hidden = !inside;
+  // Wichteln gibt es bis einschließlich Friendsmas (12.12.), danach verschwindet der Brief
+  const wichtelOn = inside && !(state.friendsmas && isoDay(new Date()) > state.friendsmas);
+  const revealing = !$('reveal').hidden;
+  $('status').hidden = !wichtelOn;
+  $('foot').hidden = !wichtelOn;
   $('tabbar').hidden = !inside;
+  $('settings').hidden = !inside || revealing;
+  $('wichtel').hidden = !wichtelOn || revealing;
+  $('polls-box').hidden = !inside || revealing;
+  if (inside) renderPolls();
   document.body.classList.toggle('tabs', inside);
-  showTab(inside && location.hash === '#kalender' ? 'cal' : 'home');
+  const tab = inside && location.hash === '#kalender' ? 'cal' : 'home';
+  showTab(tab);
+  // Auf der Übersicht steht das große Logo, da braucht es die Kopfzeile nicht
+  document.body.classList.toggle('home-in', inside && tab === 'home');
+  if (inside) renderSettings();
   if (inside) renderCal();
   $('admin-box').hidden = !(inside && state.isAdmin);
   if (inside && state.isAdmin) loadAccounts();
@@ -91,26 +101,36 @@ function render() {
       box.appendChild(b);
     }
   } else {
-    // Alles klar: Umschlag öffnen
+    // Alles klar: Übersicht
     const me = account.person;
     const first = !opened.has(me);
+    const shown = account.display || me;
     $('auth').hidden = true;
     $('ready').hidden = false;
     $('ready-error').hidden = true;
-    $('ready-title').textContent = `Hallo ${me}! 👋`;
+    $('ready-title').textContent = `Hallo ${shown}! 👋`;
+    $('addr-name').textContent = shown;
+    $('addr-name2').textContent = shown;
     $('ready-hint').textContent = first
-      ? 'Dein Umschlag wartet auf dich. Schau nach, wen du beschenkst!'
-      : 'Du kannst deinen Brief jederzeit noch einmal öffnen und deine Wünsche ändern.';
+      ? 'Dein Brief ist da! Tipp drauf und schau, wen du beschenkst.'
+      : 'Tipp auf den Brief, um ihn noch mal zu öffnen und deine Wünsche zu ändern.';
+    $('open-go').classList.toggle('new', first);
     // Nächster Termin aus dem Kalender
     const today = isoDay(new Date());
-    const next = (state.events || []).find(e => e.day >= today);
+    const next = (state.events || []).find(e => (e.end || e.day) >= today);
+    const waiting = (state.finds || []).filter(f => !f.done && !f.answers[me]).length;
+    $('find-hint').hidden = !waiting;
+    if (waiting) {
+      $('find-hint').innerHTML = '🗳️ <b></b> <a href="#kalender">Abstimmen</a>';
+      $('find-hint').querySelector('b').textContent = waiting === 1
+        ? 'Eine Terminabstimmung wartet auf dich.' : `${waiting} Terminabstimmungen warten auf dich.`;
+    }
     $('next-ev').hidden = !next;
     if (next) {
       const [, mm, dd] = next.day.split('-').map(Number);
       $('next-ev').innerHTML = '📅 Nächster Termin: <b></b> <a href="#kalender">Kalender</a>';
       $('next-ev').querySelector('b').textContent = `${dd}.${mm}. ${next.title}`;
     }
-    $('open-go').textContent = first ? 'Umschlag öffnen 💌' : 'Brief noch mal ansehen';
   }
 }
 
@@ -186,7 +206,7 @@ function renderCal() {
     cell.className = 'day' + (d.getMonth() !== m ? ' out' : '') + (key === today ? ' today' : '');
     cell.innerHTML = '<span class="n"></span>';
     cell.querySelector('.n').textContent = d.getDate();
-    for (const ev of events.filter(e => e.day === key)) {
+    for (const ev of events.filter(e => e.day <= key && key <= (e.end || e.day))) {
       const p = document.createElement('span'); p.className = 'pill-ev'; p.textContent = ev.title; p.title = ev.title;
       cell.appendChild(p);
     }
@@ -196,13 +216,13 @@ function renderCal() {
   // Liste der nächsten Termine
   const list = $('ev-list');
   list.innerHTML = '';
-  const upcoming = events.filter(e => e.day >= today);
+  const upcoming = events.filter(e => (e.end || e.day) >= today);
   for (const ev of upcoming) {
     const [yy, mm, dd] = ev.day.split('-').map(Number);
     const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(yy, mm - 1, dd).getDay()];
     const li = document.createElement('li');
     li.innerHTML = '<span class="date"></span><span class="txt"><span class="t"></span><span class="by"></span></span>';
-    li.querySelector('.date').textContent = `${wd}\n${dd}.${mm}.`;
+    li.querySelector('.date').textContent = ev.end ? `${dd}.${mm}.\nbis ${shortDay(ev.end)}` : `${wd}\n${dd}.${mm}.`;
     li.querySelector('.date').style.whiteSpace = 'pre-line';
     li.querySelector('.t').textContent = ev.title;
     li.querySelector('.by').textContent = `eingetragen von ${ev.by}`;
@@ -215,10 +235,211 @@ function renderCal() {
     list.appendChild(li);
   }
   $('ev-empty').hidden = upcoming.length > 0;
+  renderFinds();
 }
+
+const shortDay = (iso) => { const [, m, d] = iso.split('-').map(Number); return `${d}.${m}.`; };
+const rangeText = (o) => {
+  const [y, m, d] = o.day.split('-').map(Number);
+  const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(y, m - 1, d).getDay()];
+  return o.end && o.end !== o.day ? `${shortDay(o.day)} bis ${shortDay(o.end)}` : `${wd} ${shortDay(o.day)}`;
+};
+
+// ---------- „Wann könnt ihr?“ ----------
+const draftPicks = {};   // noch nicht abgeschickte Kreuzchen, pro Abstimmung
+
+function renderFinds() {
+  const me = account.person;
+  const finds = state.finds || [];
+  $('finds-box').hidden = !finds.length;
+  const box = $('find-list');
+  box.innerHTML = '';
+  for (const f of finds) {
+    const el = document.createElement('div');
+    el.className = 'find' + (f.done ? ' done' : '');
+    const missing = state.names.filter(n => !f.answers[n]);
+    const picks = draftPicks[f.id] || f.answers[me] || [];
+    el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><p class="muted small status"></p><div class="row end acts"></div>';
+    el.querySelector('.t').textContent = f.title;
+    el.querySelector('.by').textContent = ` von ${f.by}`;
+    const ul = el.querySelector('.opts');
+    f.options.forEach((o, i) => {
+      const yes = state.names.filter(n => (f.answers[n] || []).includes(i));
+      const li = document.createElement('li');
+      li.innerHTML = '<label><input type="checkbox"><span class="when"></span><span class="who small muted"></span></label>';
+      const cb = li.querySelector('input');
+      cb.checked = picks.includes(i);
+      cb.disabled = !!f.done;
+      cb.onchange = () => {
+        const cur = new Set(draftPicks[f.id] || f.answers[me] || []);
+        cb.checked ? cur.add(i) : cur.delete(i);
+        draftPicks[f.id] = [...cur];
+      };
+      li.querySelector('.when').textContent = rangeText(o);
+      li.querySelector('.who').textContent = yes.length ? `✓ ${yes.join(', ')}` : '';
+      if (f.done && f.done.option === i) li.classList.add('win');
+      if (yes.length === state.names.length) li.classList.add('all');
+      ul.appendChild(li);
+    });
+    el.querySelector('.status').textContent = f.done
+      ? `🎉 Alle können am ${rangeText(f.options[f.done.option])} Das steht jetzt im Kalender!`
+      : missing.length
+        ? `Noch nicht abgestimmt: ${missing.join(', ')}.`
+        : 'Alle haben abgestimmt, aber es gibt keinen Termin, an dem alle können. Schlagt neue Termine vor.';
+    const acts = el.querySelector('.acts');
+    if (!f.done) {
+      const send = document.createElement('button');
+      send.type = 'button';
+      send.textContent = f.answers[me] ? 'Antwort ändern' : 'Abschicken';
+      send.onclick = async () => {
+        send.disabled = true;
+        try {
+          const r = await api('/api/finds/answer', { id: f.id, picks: draftPicks[f.id] || f.answers[me] || [] });
+          delete draftPicks[f.id];
+          state.finds = r.finds; state.events = r.events;
+          renderCal(); render();
+        } catch (e2) { alert(e2.message); send.disabled = false; }
+      };
+      acts.appendChild(send);
+    }
+    if (f.by === me) {
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'ghost'; del.textContent = 'Löschen';
+      del.onclick = async () => {
+        if (!confirm(`„${f.title}“ wirklich löschen?`)) return;
+        try { const r = await api('/api/finds/delete', { id: f.id }); state.finds = r.finds; renderCal(); render(); } catch (e2) { alert(e2.message); }
+      };
+      acts.appendChild(del);
+    }
+    box.appendChild(el);
+  }
+}
+
+// ---------- Umfragen ----------
+let pollMode = 'choice';
+
+function renderPolls() {
+  const me = account.person;
+  const polls = state.polls || [];
+  const box = $('poll-list');
+  box.innerHTML = '';
+  for (const p of polls) {
+    const el = document.createElement('div');
+    el.className = 'poll' + (p.closed ? ' closed' : '');
+    el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><form class="idea-row" hidden><input maxlength="80" placeholder="Deine Idee …" required><button type="submit">+</button></form><p class="muted small status"></p><div class="row end acts"></div>';
+    el.querySelector('.t').textContent = p.q;
+    el.querySelector('.by').textContent = ` von ${p.by}${p.ideas ? ' · Ideen erwünscht' : ''}`;
+    const total = p.options.reduce((n, o) => n + o.votes.length, 0);
+    const max = Math.max(0, ...p.options.map(o => o.votes.length));
+    const ul = el.querySelector('.opts');
+    for (const o of p.options) {
+      const li = document.createElement('li');
+      const mine = o.votes.includes(me);
+      li.innerHTML = '<button type="button" class="vote"><span class="bar"></span><span class="txt"></span><span class="n"></span></button><span class="who small muted"></span>';
+      const b = li.querySelector('.vote');
+      b.classList.toggle('mine', mine);
+      b.classList.toggle('top', !!p.closed && max > 0 && o.votes.length === max);
+      b.disabled = !!p.closed;
+      li.querySelector('.bar').style.width = total ? `${o.votes.length / total * 100}%` : '0';
+      li.querySelector('.txt').textContent = (mine ? '✓ ' : '') + o.t;
+      li.querySelector('.n').textContent = o.votes.length || '';
+      li.querySelector('.who').textContent = o.votes.length ? o.votes.join(', ') + (p.ideas && o.by ? ` · Idee von ${o.by}` : '') : (p.ideas ? `Idee von ${o.by}` : '');
+      b.onclick = async () => {
+        try { const r = await api('/api/polls/vote', { id: p.id, option: o.id }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
+      };
+      ul.appendChild(li);
+    }
+    const form = el.querySelector('.idea-row');
+    form.hidden = !p.ideas || !!p.closed;
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      try { const r = await api('/api/polls/idea', { id: p.id, text: form.querySelector('input').value }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
+    };
+    const voted = state.names.filter(n => p.options.some(o => o.votes.includes(n)));
+    el.querySelector('.status').textContent = p.closed
+      ? 'Beendet.'
+      : !p.options.length ? 'Noch keine Ideen. Schreib die erste rein!'
+      : `${voted.length} von ${state.names.length} haben abgestimmt. Tipp auf eine Antwort, um zu wählen.`;
+    if (p.by === me) {
+      const acts = el.querySelector('.acts');
+      if (!p.closed) {
+        const c = document.createElement('button');
+        c.type = 'button'; c.className = 'ghost'; c.textContent = 'Beenden';
+        c.onclick = async () => { try { const r = await api('/api/polls/close', { id: p.id }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); } };
+        acts.appendChild(c);
+      }
+      const d = document.createElement('button');
+      d.type = 'button'; d.className = 'ghost'; d.textContent = 'Löschen';
+      d.onclick = async () => {
+        if (!confirm('Umfrage wirklich löschen?')) return;
+        try { const r = await api('/api/polls/delete', { id: p.id }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
+      };
+      acts.appendChild(d);
+    }
+    box.appendChild(el);
+  }
+  $('poll-empty').hidden = polls.length > 0;
+}
+
+function addOptInput(boxId, type, placeholder) {
+  const wrap = document.createElement('div');
+  wrap.className = type === 'date' ? 'two-col opt' : 'opt';
+  if (type === 'date') {
+    wrap.innerHTML = '<label class="field"><span>Von</span><input type="date" class="o-day"></label><label class="field"><span>Bis (optional)</span><input type="date" class="o-end"></label>';
+  } else {
+    wrap.innerHTML = '<label class="field"><input class="o-t" maxlength="80"></label>';
+    wrap.querySelector('input').placeholder = placeholder;
+  }
+  $(boxId).appendChild(wrap);
+}
+
+function setPollMode(mode) {
+  pollMode = mode;
+  document.querySelectorAll('[data-poll-mode]').forEach(b => { const on = b.dataset.pollMode === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  $('poll-ideas-note').hidden = mode !== 'ideas';
+}
+document.querySelectorAll('[data-poll-mode]').forEach(b => b.onclick = () => setPollMode(b.dataset.pollMode));
+
+$('poll-new').onclick = () => {
+  $('poll-form').hidden = false;
+  $('poll-q').value = '';
+  $('poll-opts').innerHTML = '';
+  setPollMode('choice');
+  ['z. B. Pasta', 'z. B. Curry', 'z. B. Pizza bestellen'].forEach(ph => addOptInput('poll-opts', 'text', ph));
+  err('poll-error', '');
+  setTimeout(() => $('poll-q').focus(), 50);
+};
+$('poll-add-opt').onclick = () => addOptInput('poll-opts', 'text', 'Noch ein Vorschlag');
+$('poll-cancel').onclick = () => { $('poll-form').hidden = true; };
+$('poll-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('poll-error', '');
+  const options = [...$('poll-opts').querySelectorAll('.o-t')].map(i => i.value.trim()).filter(Boolean);
+  try {
+    const r = await api('/api/polls/add', { question: $('poll-q').value, ideas: pollMode === 'ideas', options });
+    state.polls = r.polls;
+    $('poll-form').hidden = true;
+    renderPolls();
+  } catch (e2) { err('poll-error', e2.message); }
+});
+
+let evMode = 'fixed';
+function setEvMode(mode) {
+  evMode = mode;
+  document.querySelectorAll('[data-ev-mode]').forEach(b => { const on = b.dataset.evMode === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  $('ev-fixed').hidden = mode !== 'fixed';
+  $('ev-find').hidden = mode !== 'find';
+  $('ev-day').required = mode === 'fixed';
+  if (mode === 'find' && !$('find-opts').children.length) { addOptInput('find-opts', 'date'); addOptInput('find-opts', 'date'); }
+}
+document.querySelectorAll('[data-ev-mode]').forEach(b => b.onclick = () => setEvMode(b.dataset.evMode));
+$('find-add-opt').onclick = () => addOptInput('find-opts', 'date');
 
 function openEventForm(day) {
   $('ev-form').hidden = false;
+  $('find-opts').innerHTML = '';
+  setEvMode('fixed');
+  $('ev-end').value = '';
   $('ev-day').value = day || isoDay(new Date());
   $('ev-title').value = '';
   err('ev-error', '');
@@ -236,7 +457,18 @@ $('ev-form').addEventListener('submit', async (e) => {
   err('ev-error', '');
   const btn = e.submitter; if (btn) btn.disabled = true;
   try {
-    const r = await api('/api/events/add', { day: $('ev-day').value, title: $('ev-title').value });
+    if (evMode === 'find') {
+      const options = [...$('find-opts').querySelectorAll('.opt')]
+        .map(o => ({ day: o.querySelector('.o-day').value, end: o.querySelector('.o-end').value || o.querySelector('.o-day').value }))
+        .filter(o => o.day);
+      const r = await api('/api/finds/add', { title: $('ev-title').value, options });
+      state.finds = r.finds;
+      $('ev-form').hidden = true;
+      renderCal();
+      $('finds-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    const r = await api('/api/events/add', { day: $('ev-day').value, end: $('ev-end').value, title: $('ev-title').value });
     state.events = r.events;
     $('ev-form').hidden = true;
     const [yy, mm] = $('ev-day').value.split('-').map(Number);
@@ -255,6 +487,110 @@ async function deleteEvent(id) {
 }
 
 function err(id, msg) { $(id).textContent = msg; $(id).hidden = !msg; }
+
+// ---------- Einstellungen ----------
+function renderSettings() {
+  const shown = account.display || account.person;
+  $('set-name-now').textContent = `(${shown})`;
+  $('set-username').textContent = account.username;
+  const choice = window.goerenTheme.getChoice();
+  document.querySelectorAll('[data-theme-choice]').forEach(b => {
+    const on = b.dataset.themeChoice === choice;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on);
+  });
+  const { rise, set } = window.goerenTheme.sunTimes(new Date());
+  const hm = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  $('theme-note').textContent = choice === 'auto'
+    ? `Hell ab Sonnenaufgang (heute ${hm(rise)} Uhr), dunkel ab Sonnenuntergang (${hm(set)} Uhr).`
+    : choice === 'dark' ? 'Die App ist immer dunkel.' : 'Die App ist immer hell.';
+}
+
+document.querySelectorAll('[data-theme-choice]').forEach(b => b.onclick = () => {
+  window.goerenTheme.set(b.dataset.themeChoice);
+  renderSettings();
+});
+
+$('name-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('name-error', ''); $('name-ok').textContent = '';
+  try {
+    const r = await api('/api/me/name', { name: $('set-name').value });
+    account = r.account; state.account = r.account;
+    render();
+    $('name-ok').textContent = 'Gespeichert ✓';
+  } catch (e2) { err('name-error', e2.message); }
+});
+$('name-form').closest('details').addEventListener('toggle', (e) => {
+  if (e.target.open) { $('set-name').value = account.display || account.person; $('name-ok').textContent = ''; }
+});
+
+$('pw-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('pw-error', ''); $('pw-ok').textContent = '';
+  if ($('pw-new').value !== $('pw-new2').value) { err('pw-error', 'Die beiden neuen Passwörter sind nicht gleich.'); return; }
+  try {
+    await api('/api/me/password', { old: $('pw-old').value, password: $('pw-new').value });
+    for (const id of ['pw-old', 'pw-new', 'pw-new2']) $(id).value = '';
+    $('pw-ok').textContent = 'Neues Passwort gespeichert ✓';
+  } catch (e2) { err('pw-error', e2.message); }
+});
+
+// Benachrichtigungen (Web Push)
+const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const b64ToBytes = (b64) => {
+  const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b64.length % 4) % 4));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+};
+let swReg = null;
+
+async function initPush() {
+  const t = $('push-toggle');
+  if (!pushSupported) {
+    t.disabled = true;
+    $('push-note').textContent = isIos && !standalone
+      ? 'Auf dem iPhone geht das nur, wenn du die App auf den Home-Bildschirm legst (Teilen → „Zum Home-Bildschirm“) und sie von dort öffnest.'
+      : 'Dieser Browser kann leider keine Benachrichtigungen empfangen.';
+    return;
+  }
+  try {
+    swReg = await navigator.serviceWorker.register('/sw.js');
+    const sub = await swReg.pushManager.getSubscription();
+    t.checked = !!sub && Notification.permission === 'granted';
+  } catch { t.disabled = true; }
+}
+
+$('push-toggle').addEventListener('change', async (e) => {
+  const t = e.target;
+  t.disabled = true;
+  try {
+    if (t.checked) {
+      if (await Notification.requestPermission() !== 'granted') {
+        t.checked = false;
+        $('push-note').textContent = 'Du hast Benachrichtigungen nicht erlaubt. Du kannst das in den Einstellungen deines Handys ändern.';
+        return;
+      }
+      const { key } = await api('/api/push/key', {});
+      swReg = swReg || await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const sub = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+      await api('/api/push/subscribe', { subscription: sub.toJSON() });
+      $('push-note').textContent = 'An ✓ Du bekommst eine Nachricht, wenn jemand einen Termin einträgt.';
+    } else {
+      const sub = swReg && await swReg.pushManager.getSubscription();
+      if (sub) {
+        await api('/api/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+        await sub.unsubscribe();
+      }
+      $('push-note').textContent = 'Aus. Du bekommst keine Nachrichten mehr.';
+    }
+  } catch (e2) {
+    t.checked = !t.checked;
+    $('push-note').textContent = e2.message || 'Das hat leider nicht geklappt.';
+  } finally { t.disabled = false; }
+});
 
 // ---------- Anmelden / Registrieren ----------
 $('go-login').onclick = () => { authView = 'login'; render(); setTimeout(() => $('login-user').focus(), 50); };
@@ -316,6 +652,12 @@ async function claim(name) {
 }
 
 document.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => {
+  // Wer sich abmeldet, bekommt auf diesem Gerät keine Benachrichtigungen mehr
+  try {
+    const sub = swReg && await swReg.pushManager.getSubscription();
+    if (sub) { await api('/api/push/unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+    $('push-toggle').checked = false;
+  } catch {}
   try { await api('/api/logout', {}); } catch {}
   setSession(null);
   authView = 'start';
@@ -339,6 +681,9 @@ $('open-go').onclick = async () => {
 function reveal(r) {
   $('auth').hidden = true;
   $('ready').hidden = true;
+  $('settings').hidden = true;
+  $('wichtel').hidden = true;
+  document.body.classList.remove('home-in');
   $('reveal').hidden = false;
   $('who').textContent = r.to;
   const pills = $('pills');
@@ -405,3 +750,4 @@ $('close-reveal').onclick = () => {
 };
 
 load();
+initPush();

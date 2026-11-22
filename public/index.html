@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gören</title>
-  <meta name="description" content="Wichteln der Gören: anmelden, Namen wählen, geheimen Wichtel sehen.">
+  <meta name="description" content="Die App der Gören: Übersicht, gemeinsamer Kalender und Wichteln.">
   <meta name="theme-color" content="#2f6f5e">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Gören">
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -19,7 +20,7 @@
       <img class="logo" src="/icons/logo-88.png" alt="" width="44" height="44">
       <div>
         <h1>Gören</h1>
-        <p class="sub">Wichteln · Weihnachten 2026</p>
+        <p class="sub">Die App der Gören</p>
       </div>
     </div>
   </header>
@@ -71,16 +72,97 @@
     <!-- ===== Seite: Übersicht ===== -->
     <div id="tab-home" class="tab">
 
-    <!-- Angemeldet -->
-    <section id="ready" class="card" hidden>
+    <!-- Angemeldet: oben Logo und Begrüßung -->
+    <section id="ready" class="hello" hidden>
+      <img class="hello-logo" src="/icons/icon-512.png" alt="Gören" width="112" height="112">
       <h2 id="ready-title">Hallo!</h2>
-      <p class="muted" id="ready-hint"></p>
       <p class="next-ev" id="next-ev" hidden></p>
-      <p class="error" id="ready-error" hidden></p>
-      <div class="row">
-        <button type="button" id="open-go">Umschlag öffnen</button>
-        <button type="button" class="ghost" data-logout>Abmelden</button>
+      <p class="next-ev" id="find-hint" hidden></p>
+    </section>
+
+    <!-- Einstellungen -->
+    <section id="settings" class="card" hidden>
+      <h2>⚙️ Einstellungen</h2>
+
+      <details class="set">
+        <summary>👤 Name ändern <span class="muted small" id="set-name-now"></span></summary>
+        <form id="name-form" autocomplete="off">
+          <label class="field"><span>So begrüßt dich die App</span><input id="set-name" maxlength="30" minlength="2" required></label>
+          <p class="muted small">Zum Anmelden nimmst du weiter deinen Benutzernamen: <b id="set-username"></b></p>
+          <p class="error" id="name-error" hidden></p>
+          <div class="row end"><span class="saved" id="name-ok" aria-live="polite"></span><button type="submit">Speichern</button></div>
+        </form>
+      </details>
+
+      <details class="set">
+        <summary>🔒 Passwort ändern</summary>
+        <form id="pw-form">
+          <label class="field"><span>Jetziges Passwort</span><input type="password" id="pw-old" maxlength="100" autocomplete="current-password" required></label>
+          <label class="field"><span>Neues Passwort (mind. 4 Zeichen)</span><input type="password" id="pw-new" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+          <label class="field"><span>Neues Passwort wiederholen</span><input type="password" id="pw-new2" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+          <p class="error" id="pw-error" hidden></p>
+          <div class="row end"><span class="saved" id="pw-ok" aria-live="polite"></span><button type="submit">Passwort ändern</button></div>
+        </form>
+      </details>
+
+      <div class="set-row">
+        <div class="set-label">🌗 Ansicht</div>
+        <div class="seg" id="theme-seg" role="radiogroup" aria-label="Ansicht">
+          <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
+          <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
+          <button type="button" role="radio" data-theme-choice="auto">🌅 Auto</button>
+        </div>
+        <p class="muted small" id="theme-note"></p>
       </div>
+
+      <div class="set-row">
+        <label class="switch-row">
+          <span class="set-label">🔔 Benachrichtigungen</span>
+          <input type="checkbox" class="switch" id="push-toggle">
+        </label>
+        <p class="muted small" id="push-note">Bekomm eine Nachricht aufs Handy, wenn jemand einen Termin einträgt.</p>
+      </div>
+
+      <div class="row end"><button type="button" class="ghost" data-logout>Abmelden</button></div>
+    </section>
+
+    <!-- Wichteln: Brief im Weihnachtsstil -->
+    <section id="wichtel" class="card xmas" hidden>
+      <h2>🎄 Wichteln</h2>
+      <button type="button" class="envelope closed" id="open-go" aria-label="Wichtel-Brief öffnen">
+        <span class="back"></span>
+        <span class="flap"></span>
+        <span class="front"></span>
+        <span class="addr">An <b id="addr-name"></b></span>
+        <span class="stamp" aria-hidden="true">🎄</span>
+        <span class="seal" aria-hidden="true">★</span>
+      </button>
+      <p class="muted small center" id="ready-hint"></p>
+      <p class="error" id="ready-error" hidden></p>
+    </section>
+
+    <!-- Umfragen -->
+    <section id="polls-box" class="card" hidden>
+      <div class="row head-row">
+        <h2>📊 Umfragen</h2>
+        <button type="button" class="small-btn" id="poll-new">+ Neue Umfrage</button>
+      </div>
+
+      <form id="poll-form" class="sub-form" hidden autocomplete="off">
+        <label class="field"><span>Deine Frage</span><input id="poll-q" maxlength="120" required placeholder="z. B. Was wollen wir heute Abend kochen?"></label>
+        <div class="seg two" role="radiogroup" aria-label="Art der Umfrage">
+          <button type="button" role="radio" data-poll-mode="choice" class="on" aria-checked="true">Vorschläge zum Auswählen</button>
+          <button type="button" role="radio" data-poll-mode="ideas" aria-checked="false">Jede tippt Ideen ein</button>
+        </div>
+        <div id="poll-opts"></div>
+        <button type="button" class="link" id="poll-add-opt">+ noch ein Vorschlag</button>
+        <p class="muted small" id="poll-ideas-note" hidden>Alle können eigene Ideen dazuschreiben und dann für die beste abstimmen. Du kannst unten schon ein paar Ideen vorgeben, musst aber nicht.</p>
+        <p class="error" id="poll-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" id="poll-cancel">Abbrechen</button><button type="submit">Umfrage starten</button></div>
+      </form>
+
+      <div id="poll-list"></div>
+      <p class="muted small" id="poll-empty">Noch keine Umfragen. Frag doch mal was!</p>
     </section>
 
     <!-- Brief -->
@@ -96,7 +178,9 @@
             <span class="small">Psst, nicht verraten!</span>
           </div>
           <div class="front"></div>
-          <div class="seal">W</div>
+          <div class="addr">An <b id="addr-name2"></b></div>
+          <div class="stamp" aria-hidden="true">🎄</div>
+          <div class="seal" aria-hidden="true">★</div>
         </div>
         <div class="pills" id="pills"></div>
         <p class="muted small center" id="reveal-note"></p>
@@ -159,11 +243,30 @@
 
       <form class="card" id="ev-form" hidden autocomplete="off">
         <h2>Neuer Termin 📅</h2>
-        <label class="field"><span>Datum</span><input type="date" id="ev-day" required></label>
-        <label class="field"><span>Was ist los?</span><input id="ev-title" maxlength="80" required placeholder="z. B. Wichtel-Abend bei Lilly 🎄"></label>
+        <label class="field"><span>Was ist los?</span><input id="ev-title" maxlength="80" required placeholder="z. B. Urlaub Polen 🏖️"></label>
+        <div class="seg two" role="radiogroup" aria-label="Datum">
+          <button type="button" role="radio" data-ev-mode="fixed" class="on" aria-checked="true">📌 Datum steht fest</button>
+          <button type="button" role="radio" data-ev-mode="find" aria-checked="false">🗳️ Wann könnt ihr?</button>
+        </div>
+        <div id="ev-fixed">
+          <div class="two-col">
+            <label class="field"><span>Von</span><input type="date" id="ev-day" required></label>
+            <label class="field"><span>Bis (optional)</span><input type="date" id="ev-end"></label>
+          </div>
+        </div>
+        <div id="ev-find" hidden>
+          <p class="muted small" style="margin-top:10px">Schlag ein paar Termine vor. Alle kreuzen an, wann sie können. Sobald alle an einem Termin können, steht er automatisch im Kalender.</p>
+          <div id="find-opts"></div>
+          <button type="button" class="link" id="find-add-opt">+ noch ein Termin</button>
+        </div>
         <p class="error" id="ev-error" hidden></p>
         <div class="row end"><button type="button" class="ghost" id="ev-cancel">Abbrechen</button><button type="submit">Eintragen</button></div>
       </form>
+
+      <section class="card" id="finds-box" hidden>
+        <h2>🗳️ Wann könnt ihr?</h2>
+        <div id="find-list"></div>
+      </section>
 
       <section class="card">
         <h2>Nächste Termine</h2>
