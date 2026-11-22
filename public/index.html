@@ -131,6 +131,7 @@
 
       <form id="poll-form" class="sub-form" hidden autocomplete="off">
         <label class="field"><span>Deine Frage</span><input id="poll-q" maxlength="120" required placeholder="z. B. Was wollen wir heute Abend kochen?"></label>
+        <div class="q-img-slot" id="poll-q-img"></div>
         <div class="seg two" role="radiogroup" aria-label="Art der Umfrage">
           <button type="button" role="radio" data-poll-mode="choice" class="on" aria-checked="true">Vorschläge zum Auswählen</button>
           <button type="button" role="radio" data-poll-mode="ideas" aria-checked="false">Jede tippt Ideen ein</button>
@@ -372,6 +373,7 @@
     <a href="#chat" data-tab="chat"><span aria-hidden="true">💬</span>Chat<i class="badge" id="chat-badge" hidden></i></a>
     <a href="#einstellungen" data-tab="set"><span aria-hidden="true">⚙️</span>Einstellungen</a>
   </nav>
+  <div class="lightbox" id="lightbox" hidden><img alt=""></div>
   <script src="/app.js" type="module"></script>
 </body>
 </html>

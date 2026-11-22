@@ -37,7 +37,8 @@ export class Wichtel extends DurableObject {
     s.push ||= {};
     s.polls ||= [];
     s.chats ||= [];
-    s.forms ||= [];   // Fragebögen (wie Google Forms)
+    s.forms ||= [];
+    s.imgs ||= {};    // hochgeladene Bilder (Umfragen, Fragebögen): id -> { by, at }; das Bild selbst liegt unter img:<id>   // Fragebögen (wie Google Forms)
     // Der große Gören-Chat mit allen
     const all = s.chats.find(c => c.id === 'all');
     if (!all) { s.chats.unshift({ id: 'all', name: 'Gören-Chat 💬', members: [...s.names], at: Date.now() }); changed = true; }
@@ -497,6 +498,38 @@ export class Wichtel extends DurableObject {
       return json({ ok: true, finds: s.finds, events: s.events });
     }
 
+    // ---------- Bilder für Umfragen und Fragebögen ----------
+    const imgOk = (id) => (typeof id === 'string' && s.imgs[id] ? id : null);
+    const dropImgs = async (ids) => {
+      for (const id of ids.filter(imgOk)) { delete s.imgs[id]; await this.ctx.storage.delete(`img:${id}`); }
+    };
+    // Antworten kommen als Text oder als { t, img }
+    const optList = (arr) => {
+      const seen = new Set(), out = [];
+      for (const o of (Array.isArray(arr) ? arr : [])) {
+        const t = String((o && typeof o === 'object' ? o.t : o) || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+        if (!t || seen.has(t.toLowerCase())) continue;
+        seen.add(t.toLowerCase());
+        out.push({ t, img: imgOk(o?.img) });
+      }
+      return out.slice(0, 20);
+    };
+    if (path === '/api/img/upload') {
+      const img = body.image;
+      if (typeof img !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > 400_000)
+        return json({ error: 'Das Bild ist zu groß oder kein Bild.' }, 400);
+      if (Object.keys(s.imgs).length >= 500) return json({ error: 'Der Bilder-Speicher ist voll. Löscht erst alte Umfragen.' }, 400);
+      const id = newId() + newId();
+      await this.ctx.storage.put(`img:${id}`, img);
+      s.imgs[id] = { by: me, at: Date.now() };
+      await save();
+      return json({ ok: true, id });
+    }
+    if (path === '/api/img') {
+      const img = imgOk(body.id) ? await this.ctx.storage.get(`img:${body.id}`) : null;
+      return json({ image: img || null });
+    }
+
     // ---------- Fragebögen ----------
     const QTYPES = ['short', 'long', 'single', 'multi', 'dropdown', 'scale', 'yesno', 'date'];
     if (path === '/api/forms/add') {
@@ -504,11 +537,14 @@ export class Wichtel extends DurableObject {
       if (!title) return json({ error: 'Bitte gib dem Fragebogen einen Titel.' }, 400);
       const qs = (Array.isArray(body.questions) ? body.questions : []).slice(0, 30).map(q => {
         const type = QTYPES.includes(q?.type) ? q.type : 'short';
-        const opts = [...new Set((Array.isArray(q?.options) ? q.options : []).map(o => String(o || '').trim().slice(0, 80)).filter(Boolean))].slice(0, 20);
+        const ol = optList(q?.options);
         const max = Math.min(10, Math.max(3, Number(q?.max) || 5));
         return {
-          id: newId(), type, text: String(q?.text || '').trim().slice(0, 200), required: !!q?.required,
-          ...(['single', 'multi', 'dropdown'].includes(type) ? { options: opts, other: !!q?.other && type !== 'dropdown' } : {}),
+          id: newId(), type, text: String(q?.text || '').trim().slice(0, 200), required: !!q?.required, img: imgOk(q?.img),
+          ...(['single', 'multi', 'dropdown'].includes(type) ? {
+            options: ol.map(o => o.t), other: !!q?.other && type !== 'dropdown',
+            ...(type !== 'dropdown' && ol.some(o => o.img) ? { optImgs: ol.map(o => o.img) } : {}),
+          } : {}),
           ...(type === 'scale' ? { max, low: String(q?.low || '').slice(0, 30), high: String(q?.high || '').slice(0, 30) } : {}),
         };
       });
@@ -560,7 +596,10 @@ export class Wichtel extends DurableObject {
     if (path === '/api/forms/close' || path === '/api/forms/delete') {
       if (form.by !== me) return json({ error: 'Nur wer den Fragebogen erstellt hat, kann das.' }, 403);
       if (path === '/api/forms/close') form.closed = Date.now();
-      else s.forms = s.forms.filter(x => x.id !== form.id);
+      else {
+        s.forms = s.forms.filter(x => x.id !== form.id);
+        await dropImgs(form.questions.flatMap(q => [q.img, ...(q.optImgs || [])]));
+      }
       await save();
       return json({ ok: true, forms: s.forms.map(formView) });
     }
@@ -571,10 +610,11 @@ export class Wichtel extends DurableObject {
       const q = String(body.question || '').trim().slice(0, 120);
       if (!q) return json({ error: 'Bitte schreib deine Frage auf.' }, 400);
       const ideas = !!body.ideas;   // true: jede darf Ideen reintippen
-      const opts = [...new Set((Array.isArray(body.options) ? body.options : []).map(cleanOpt).filter(Boolean))].slice(0, 20);
+      const opts = optList(body.options);
       if (!ideas && opts.length < 2) return json({ error: 'Bitte mindestens zwei Vorschläge eintragen.' }, 400);
       if (s.polls.length >= 50) return json({ error: 'Es gibt schon zu viele Umfragen. Lösch erst eine alte.' }, 400);
-      s.polls.unshift({ id: newId(), q, ideas, by: me, options: opts.map(t => ({ id: newId(), t, by: me, votes: [] })), at: Date.now() });
+      s.polls.unshift({ id: newId(), q, img: imgOk(body.img), ideas, by: me,
+        options: opts.map(o => ({ id: newId(), t: o.t, img: o.img, by: me, votes: [] })), at: Date.now() });
       await save();
       await notify(`📊 ${acct.display || me} fragt: ${q}`, null, '/');
       return json({ ok: true, polls: s.polls });
@@ -587,7 +627,7 @@ export class Wichtel extends DurableObject {
       const t = cleanOpt(body.text);
       if (!t) return json({ error: 'Bitte schreib deine Idee auf.' }, 400);
       if (poll.options.length >= 30) return json({ error: 'Es gibt schon genug Ideen.' }, 400);
-      if (!poll.options.some(o => o.t.toLowerCase() === t.toLowerCase())) poll.options.push({ id: newId(), t, by: me, votes: [me] });
+      if (!poll.options.some(o => o.t.toLowerCase() === t.toLowerCase())) poll.options.push({ id: newId(), t, img: imgOk(body.img), by: me, votes: [me] });
       await save();
       return json({ ok: true, polls: s.polls });
     }
@@ -605,7 +645,10 @@ export class Wichtel extends DurableObject {
     if (path === '/api/polls/close' || path === '/api/polls/delete') {
       if (poll.by !== me) return json({ error: 'Nur wer die Umfrage gestartet hat, kann das.' }, 403);
       if (path === '/api/polls/close') poll.closed = Date.now();
-      else s.polls = s.polls.filter(x => x.id !== poll.id);
+      else {
+        s.polls = s.polls.filter(x => x.id !== poll.id);
+        await dropImgs([poll.img, ...poll.options.map(o => o.img)]);
+      }
       await save();
       return json({ ok: true, polls: s.polls });
     }
