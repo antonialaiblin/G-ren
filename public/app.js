@@ -362,6 +362,7 @@ function renderPolls() {
     el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><form class="idea-row" hidden><input maxlength="80" placeholder="Deine Idee …" required><button type="submit">+</button></form><p class="muted small status"></p><div class="row end acts"></div>';
     el.querySelector('.t').textContent = p.q;
     el.querySelector('.by').textContent = ` von ${p.by}${p.ideas ? ' · Ideen erwünscht' : ''}`;
+    if (p.img) el.querySelector('.find-head').after(imgThumb(p.img, 'q-pic'));
     const total = p.options.reduce((n, o) => n + o.votes.length, 0);
     const max = Math.max(0, ...p.options.map(o => o.votes.length));
     const ul = el.querySelector('.opts');
@@ -376,6 +377,7 @@ function renderPolls() {
       li.querySelector('.bar').style.width = total ? `${o.votes.length / total * 100}%` : '0';
       li.querySelector('.txt').textContent = (mine ? '✓ ' : '') + o.t;
       li.querySelector('.n').textContent = o.votes.length || '';
+      if (o.img) { b.classList.add('has-img'); b.insertBefore(imgThumb(o.img, 'thumb'), li.querySelector('.txt')); }
       li.querySelector('.who').textContent = o.votes.length ? o.votes.join(', ') + (p.ideas && o.by ? ` · Idee von ${o.by}` : '') : (p.ideas ? `Idee von ${o.by}` : '');
       b.onclick = async () => {
         try { const r = await api('/api/polls/vote', { id: p.id, option: o.id }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
@@ -384,9 +386,11 @@ function renderPolls() {
     }
     const form = el.querySelector('.idea-row');
     form.hidden = !p.ideas || !!p.closed;
+    let ideaImg = null;
+    form.insertBefore(imgPicker(null, (id) => { ideaImg = id; }), form.querySelector('button'));
     form.onsubmit = async (e) => {
       e.preventDefault();
-      try { const r = await api('/api/polls/idea', { id: p.id, text: form.querySelector('input').value }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
+      try { const r = await api('/api/polls/idea', { id: p.id, text: form.querySelector('input').value, img: ideaImg }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
     };
     const voted = state.names.filter(n => p.options.some(o => o.votes.includes(n)));
     el.querySelector('.status').textContent = p.closed
@@ -425,7 +429,7 @@ const openForms = {};           // id -> 'fill' | 'results'
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-function newQ(type = 'single') { return { type, text: '', required: false, options: ['', ''], other: false, max: 5, low: '', high: '' }; }
+function newQ(type = 'single') { return { type, text: '', img: null, required: false, options: ['', ''], optImgs: [null, null], other: false, max: 5, low: '', high: '' }; }
 
 function renderBuilder() {
   const box = $('fb-questions');
@@ -445,7 +449,9 @@ function renderBuilder() {
 
     const text = el('input', 'q-text'); text.maxLength = 200; text.placeholder = 'Deine Frage'; text.value = q.text;
     text.oninput = () => { q.text = text.value; };
-    card.append(text);
+    const tRow = el('div', 'q-text-row');
+    tRow.append(text, imgPicker(q.img, (id) => { q.img = id; }));
+    card.append(tRow);
 
     const sel = el('select', 'q-type');
     for (const [v, label] of QTYPES) sel.add(new Option(label, v, false, v === q.type));
@@ -459,13 +465,14 @@ function renderBuilder() {
         row.append(el('span', 'q-mark', q.type === 'multi' ? '☐' : q.type === 'dropdown' ? `${k + 1}.` : '○'));
         const inp = el('input'); inp.maxLength = 80; inp.placeholder = `Antwort ${k + 1}`; inp.value = o;
         inp.oninput = () => { q.options[k] = inp.value; };
-        inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); q.options.push(''); renderBuilder(); focusLast(i); } };
+        inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); q.options.push(''); q.optImgs.push(null); renderBuilder(); focusLast(i); } };
         row.append(inp);
-        if (q.options.length > 2) { const x = el('button', 'ghost tiny', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Antwort entfernen'); x.onclick = () => { q.options.splice(k, 1); renderBuilder(); }; row.append(x); }
+        if (q.type !== 'dropdown') row.append(imgPicker(q.optImgs[k] || null, (id) => { q.optImgs[k] = id; }));
+        if (q.options.length > 2) { const x = el('button', 'ghost tiny', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Antwort entfernen'); x.onclick = () => { q.options.splice(k, 1); q.optImgs.splice(k, 1); renderBuilder(); }; row.append(x); }
         list.append(row);
       });
       const add = el('button', 'link', '+ Antwort hinzufügen'); add.type = 'button';
-      add.onclick = () => { q.options.push(''); renderBuilder(); focusLast(i); };
+      add.onclick = () => { q.options.push(''); q.optImgs.push(null); renderBuilder(); focusLast(i); };
       list.append(add);
       card.append(list);
       if (q.type !== 'dropdown') card.append(checkRow('„Sonstiges“ mit eigenem Text erlauben', q.other, v => { q.other = v; }));
@@ -506,7 +513,7 @@ $('fb-cancel').onclick = () => { $('form-builder').hidden = true; };
 $('form-builder').addEventListener('submit', async (e) => {
   e.preventDefault();
   err('fb-error', '');
-  const questions = fq.map(q => ({ ...q, options: hasOpts(q.type) ? q.options.map(o => o.trim()).filter(Boolean) : undefined }));
+  const questions = fq.map(q => ({ ...q, options: hasOpts(q.type) ? q.options.map((o, k) => ({ t: o.trim(), img: q.optImgs[k] || null })).filter(o => o.t) : undefined }));
   const btn = e.submitter; if (btn) btn.disabled = true;
   try {
     const r = await api('/api/forms/add', { title: $('fb-title').value, desc: $('fb-desc').value, anonymous: $('fb-anon').checked, questions });
@@ -561,6 +568,7 @@ function fillView(f) {
     const lg = el('legend', null, `${i + 1}. ${q.text}`);
     if (q.required) lg.append(el('span', 'req', ' *'));
     wrap.append(lg);
+    if (q.img) wrap.append(imgThumb(q.img, 'q-pic'));
     const cur = mine[q.id];
     const name = `${f.id}-${q.id}`;
     if (q.type === 'short' || q.type === 'long' || q.type === 'date') {
@@ -585,10 +593,12 @@ function fillView(f) {
       const otherCur = curArr.find(x => typeof x === 'string' && x.startsWith('Sonstiges: '));
       const list = el('div', 'fq-opts' + (q.type === 'yesno' ? ' yn' : ''));
       const inputs = [];
-      for (const o of opts) {
+      for (const [k, o] of opts.entries()) {
         const l = el('label', 'fq-opt');
         const c = el('input'); c.type = multi ? 'checkbox' : 'radio'; c.name = name; c.value = o; c.checked = curArr.includes(o);
-        l.append(c, el('span', null, o));
+        l.append(c);
+        if (q.optImgs?.[k]) { l.classList.add('has-img'); l.append(imgThumb(q.optImgs[k], 'thumb')); }
+        l.append(el('span', null, o));
         list.append(l); inputs.push(c);
       }
       let otherBox = null, otherText = null;
@@ -650,6 +660,7 @@ function resultsView(f) {
     sec.append(el('b', null, `${i + 1}. ${q.text}`));
     const answers = f.responses.map(x => ({ who: x.who, v: x.r[q.id] })).filter(x => x.v !== undefined && x.v !== '' && x.v !== null);
     sec.append(el('span', 'muted small', ` · ${answers.length} ${answers.length === 1 ? 'Antwort' : 'Antworten'}`));
+    if (q.img) sec.append(imgThumb(q.img, 'q-pic'));
     if (['single', 'multi', 'dropdown', 'yesno', 'scale'].includes(q.type)) {
       const labels = q.type === 'yesno' ? ['Ja', 'Nein'] : q.type === 'scale' ? Array.from({ length: q.max }, (_, k) => String(k + 1)) : [...q.options];
       const counts = new Map(labels.map(l => [l, []]));
@@ -663,7 +674,10 @@ function resultsView(f) {
       for (const [label, whos] of counts) {
         const row = el('div', 'res-bar');
         const bar = el('span', 'bar'); bar.style.width = `${whos.length / maxN * 100}%`;
-        row.append(bar, el('span', 'lbl', label), el('span', 'n', whos.length));
+        row.append(bar);
+        const oi = q.options ? q.options.indexOf(label) : -1;
+        if (oi >= 0 && q.optImgs?.[oi]) row.append(imgThumb(q.optImgs[oi], 'thumb small rel'));
+        row.append(el('span', 'lbl', label), el('span', 'n', whos.length));
         list.append(row);
         if (whos.length && !f.anonymous) list.append(el('span', 'who small muted', whos.map(displayName).join(', ')));
       }
@@ -688,17 +702,68 @@ function resultsView(f) {
   return box;
 }
 
+// ---------- Bilder in Umfragen und Fragebögen ----------
+const imgCache = {};   // id -> Promise<dataURL>
+function getImg(id) {
+  if (!imgCache[id]) imgCache[id] = api('/api/img', { id }).then(r => r.image).catch(() => { delete imgCache[id]; return null; });
+  return imgCache[id];
+}
+// Bild-Vorschau; Antippen zeigt es groß
+function imgThumb(id, cls = 'thumb') {
+  const im = el('img', cls);
+  im.alt = '';
+  im.loading = 'lazy';
+  getImg(id).then(src => { if (src) im.src = src; });
+  im.onclick = (e) => { e.preventDefault(); e.stopPropagation(); getImg(id).then(src => { if (!src) return; $('lightbox').querySelector('img').src = src; $('lightbox').hidden = false; }); };
+  return im;
+}
+$('lightbox').onclick = () => { $('lightbox').hidden = true; };
+
+// Knopf „📷“ zum Bild hinzufügen; zeigt danach eine Vorschau mit ✕
+function imgPicker(current, onChange, label = '📷') {
+  const box = el('span', 'img-pick');
+  const draw = (id) => {
+    box.innerHTML = '';
+    if (id) {
+      box.append(imgThumb(id, 'thumb small'));
+      const x = el('button', 'ghost tiny', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Bild entfernen');
+      x.onclick = () => { onChange(null); draw(null); };
+      box.append(x);
+    } else {
+      const l = el('label', 'ghost tiny img-btn', label); l.title = 'Bild hinzufügen'; l.setAttribute('role', 'button');
+      const f = el('input'); f.type = 'file'; f.accept = 'image/*'; f.hidden = true;
+      f.onchange = async () => {
+        const file = f.files[0]; if (!file) return;
+        l.textContent = '⏳';
+        try {
+          const data = await shrinkImage(file, 900, false);
+          const r = await api('/api/img/upload', { image: data });
+          imgCache[r.id] = Promise.resolve(data);
+          onChange(r.id); draw(r.id);
+        } catch (e2) { alert(e2.message); draw(null); }
+      };
+      l.append(f);
+      box.append(l);
+    }
+  };
+  draw(current);
+  return box;
+}
+
 function addOptInput(boxId, type, placeholder) {
   const wrap = document.createElement('div');
   wrap.className = type === 'date' ? 'two-col opt' : 'opt';
   if (type === 'date') {
     wrap.innerHTML = '<label class="field"><span>Von</span><input type="date" class="o-day"></label><label class="field"><span>Bis (optional)</span><input type="date" class="o-end"></label>';
   } else {
+    wrap.className = 'opt opt-img';
     wrap.innerHTML = '<label class="field"><input class="o-t" maxlength="80"></label>';
     wrap.querySelector('input').placeholder = placeholder;
+    wrap.append(imgPicker(null, (id) => { wrap.dataset.img = id || ''; }));
   }
   $(boxId).appendChild(wrap);
 }
+let pollQImg = null;
 
 function setPollMode(mode) {
   pollMode = mode;
@@ -714,6 +779,9 @@ $('poll-new').onclick = () => {
   $('poll-opts').innerHTML = '';
   setPollMode('choice');
   ['z. B. Pasta', 'z. B. Curry', 'z. B. Pizza bestellen'].forEach(ph => addOptInput('poll-opts', 'text', ph));
+  pollQImg = null;
+  const slot = $('poll-q-img'); slot.innerHTML = '';
+  slot.append(imgPicker(null, (id) => { pollQImg = id; }, '📷 Bild zur Frage'));
   err('poll-error', '');
   setTimeout(() => $('poll-q').focus(), 50);
 };
@@ -722,9 +790,10 @@ $('poll-cancel').onclick = () => { $('poll-form').hidden = true; };
 $('poll-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   err('poll-error', '');
-  const options = [...$('poll-opts').querySelectorAll('.o-t')].map(i => i.value.trim()).filter(Boolean);
+  const options = [...$('poll-opts').querySelectorAll('.opt')]
+    .map(w => ({ t: w.querySelector('.o-t').value.trim(), img: w.dataset.img || null })).filter(o => o.t);
   try {
-    const r = await api('/api/polls/add', { question: $('poll-q').value, ideas: pollMode === 'ideas', options });
+    const r = await api('/api/polls/add', { question: $('poll-q').value, img: pollQImg, ideas: pollMode === 'ideas', options });
     state.polls = r.polls;
     $('poll-form').hidden = true;
     renderPolls();
@@ -820,14 +889,20 @@ function setAvatar(el, person) {
 const displayName = (person) => state.people?.[person]?.display || person;
 
 // Bild verkleinern (quadratisch, 256 px), damit es schnell lädt
-function shrinkImage(file) {
+function shrinkImage(file, max = 256, square = true) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const size = 256, c = document.createElement('canvas');
-      c.width = c.height = size;
-      const k = Math.min(img.width, img.height);
-      c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, size, size);
+      const c = document.createElement('canvas');
+      if (square) {
+        c.width = c.height = max;
+        const k = Math.min(img.width, img.height);
+        c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, max, max);
+      } else {
+        const f = Math.min(1, max / Math.max(img.width, img.height));
+        c.width = Math.round(img.width * f); c.height = Math.round(img.height * f);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      }
       URL.revokeObjectURL(img.src);
       resolve(c.toDataURL('image/jpeg', 0.85));
     };
