@@ -38,6 +38,7 @@ export class Wichtel extends DurableObject {
     s.polls ||= [];
     s.chats ||= [];
     s.forms ||= [];
+    s.stammtisch ||= { day: 4, done: {} };   // Wochentag 1=Mo … 7=So (0 = aus); done: was für welche Woche schon passiert ist
     s.imgs ||= {};    // hochgeladene Bilder (Umfragen, Fragebögen): id -> { by, at }; das Bild selbst liegt unter img:<id>   // Fragebögen (wie Google Forms)
     // Der große Gören-Chat mit allen
     const all = s.chats.find(c => c.id === 'all');
@@ -107,11 +108,52 @@ export class Wichtel extends DurableObject {
       if (!subs.length) return;
       for (const [, p] of subs) p.msg = { text: msg, at: Date.now(), link };
       await save();
-      const ok = await Promise.all(subs.map(([ep]) => sendPush(s.vapid, ep, url.origin)));
+      const ok = await Promise.all(subs.map(([ep]) => sendPush(s.vapid, ep, s.origin || url.origin)));
       let gone = false;
       subs.forEach(([ep], i) => { if (!ok[i]) { delete s.push[ep]; gone = true; } });
       if (gone) await save();
     };
+
+    // Adresse der App merken (für Benachrichtigungen, die der Zeitplan verschickt)
+    if (path.startsWith('/api/') && s.origin !== url.origin) s.origin = url.origin;
+
+    // ---------- Zeitplan (läuft jede Stunde, siehe wrangler.toml) ----------
+    if (path === '/internal/cron') {
+      await stammtischTick();
+      return json({ ok: true });
+    }
+
+    // Stammtisch: am Stammtisch-Tag kommt die Abstimmung für nächste Woche,
+    // am Sonntagabend werden alle erinnert, die noch nicht abgestimmt haben.
+    async function stammtischTick() {
+      const st = s.stammtisch;
+      if (!st.day) return;
+      const now = berlinNow();
+      const nextMon = addDays(now.day, 8 - now.wd);
+      const nextSun = addDays(nextMon, 6);
+      const week = nextMon;
+      st.done[week] ||= {};
+      const fixed = s.events.some(e => /stammtisch/i.test(e.title) && e.day >= nextMon && e.day <= nextSun);
+      // Abstimmung starten
+      if (now.wd === st.day && now.hour >= 10 && !st.done[week].poll && !fixed) {
+        const options = [];
+        for (let i = 0; i < 7; i++) options.push({ day: addDays(nextMon, i), end: addDays(nextMon, i) });
+        s.finds.unshift({ id: newId(), title: 'Stammtisch 🍻', kind: 'stammtisch', week, by: null, options, answers: {}, at: Date.now() });
+        st.done[week].poll = now.day;
+        await save();
+        await notify('🍻 Wann ist nächste Woche Stammtisch? Stimm jetzt ab!');
+      }
+      // Erinnerung am Sonntag ab 18 Uhr
+      const open = s.finds.find(f => f.kind === 'stammtisch' && !f.done && f.week === week);
+      if (open && now.wd === 7 && now.hour >= 18 && !st.done[week].remind && st.done[week].poll && st.done[week].poll < now.day && !fixed) {
+        const missing = s.names.filter(n => !open.answers[n]);
+        st.done[week].remind = now.day;
+        await save();
+        if (missing.length) await notify('🍻 Erinnerung: Du hast noch nicht abgestimmt, wann nächste Woche Stammtisch ist.', missing);
+      }
+      // Alte Einträge aufräumen
+      for (const w of Object.keys(st.done)) if (w < addDays(now.day, -60)) delete st.done[w];
+    }
 
     if (path === '/api/state' && request.method === 'GET') {
       return json({
@@ -130,6 +172,7 @@ export class Wichtel extends DurableObject {
         budget: BUDGET,
         bescherung: BESCHERUNG,
         friendsmas: FRIENDSMAS,
+        stammtischDay: s.stammtisch.day,
       });
     }
 
@@ -435,6 +478,10 @@ export class Wichtel extends DurableObject {
       const id = newId();
       s.events.push({ id, day, ...(end && end !== day ? { end } : {}), title, by: me, at: Date.now() });
       s.events.sort((a, b) => a.day.localeCompare(b.day));
+      // Stammtisch fest eingetragen? Dann braucht es keine Abstimmung (und keine Erinnerung) für diese Woche
+      if (/stammtisch/i.test(title)) {
+        s.finds = s.finds.filter(f => !(f.kind === 'stammtisch' && !f.done && day >= f.week && day <= addDays(f.week, 6)));
+      }
       await save();
       const [, mm, dd] = day.split('-').map(Number);
       const who = acct.display || me;
@@ -448,6 +495,15 @@ export class Wichtel extends DurableObject {
       s.events = s.events.filter(e => e.id !== body.id);
       await save();
       return json({ ok: true, events: s.events });
+    }
+
+    // ---------- Stammtisch-Tag einstellen (gilt für alle) ----------
+    if (path === '/api/stammtisch') {
+      const d = Number(body.day);
+      if (!(Number.isInteger(d) && d >= 0 && d <= 7)) return json({ error: 'Bitte einen Wochentag wählen.' }, 400);
+      s.stammtisch.day = d;
+      await save();
+      return json({ ok: true, stammtischDay: d });
     }
 
     // ---------- „Wann könnt ihr?“ ----------
@@ -473,7 +529,13 @@ export class Wichtel extends DurableObject {
       // Haben alle geantwortet und gibt es einen Termin, an dem alle können? Dann ab in den Kalender.
       let added = null;
       if (s.names.every(n => f.answers[n])) {
-        const i = f.options.findIndex((_, k) => s.names.every(n => f.answers[n].includes(k)));
+        let i = f.options.findIndex((_, k) => s.names.every(n => f.answers[n].includes(k)));
+        // Beim Stammtisch: wenn nicht alle können, gewinnt der Tag mit den meisten Stimmen (mindestens 2)
+        if (i < 0 && f.kind === 'stammtisch') {
+          const votes = f.options.map((_, k) => s.names.filter(n => f.answers[n].includes(k)).length);
+          const best = Math.max(...votes);
+          if (best >= 2) i = votes.indexOf(best);
+        }
         if (i >= 0) {
           const o = f.options[i];
           added = { id: newId(), day: o.day, ...(o.end !== o.day ? { end: o.end } : {}), title: f.title, by: f.by, at: Date.now() };
@@ -485,14 +547,16 @@ export class Wichtel extends DurableObject {
       await save();
       if (added) {
         const [, mm, dd] = added.day.split('-').map(Number);
-        await notify(`🎉 Alle können! „${f.title}“ steht jetzt am ${dd}.${mm}. im Kalender.`);
+        const allCan = s.names.every(n => f.answers[n].includes(f.done.option));
+        await notify(allCan ? `🎉 Alle können! „${f.title}“ steht jetzt am ${dd}.${mm}. im Kalender.`
+          : `🎉 „${f.title}“ ist am ${dd}.${mm}. (da können die meisten). Steht im Kalender!`);
       }
       return json({ ok: true, finds: s.finds, events: s.events, added: !!added });
     }
     if (path === '/api/finds/delete') {
       const f = s.finds.find(x => x.id === body.id);
       if (!f) return json({ error: 'Diese Abstimmung gibt es nicht mehr.' }, 404);
-      if (f.by !== me) return json({ error: 'Nur wer gefragt hat, kann die Abstimmung löschen.' }, 403);
+      if (f.by && f.by !== me) return json({ error: 'Nur wer gefragt hat, kann die Abstimmung löschen.' }, 403);
       s.finds = s.finds.filter(x => x.id !== body.id);
       await save();
       return json({ ok: true, finds: s.finds, events: s.events });
@@ -657,6 +721,21 @@ export class Wichtel extends DurableObject {
   }
 }
 
+// Heute in Berlin: Datum, Wochentag (1=Mo … 7=So) und Stunde
+function berlinNow(date = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', weekday: 'short', hour12: false,
+  }).formatToParts(date).map(x => [x.type, x.value]));
+  const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(p.weekday) + 1;
+  return { day: `${p.year}-${p.month}-${p.day}`, wd, hour: Number(p.hour) % 24 };
+}
+function addDays(day, n) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+export { berlinNow, addDays };
+
 const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d));
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -668,5 +747,10 @@ export default {
       return stub.fetch(request);
     }
     return env.ASSETS.fetch(request);
+  },
+  // Zeitplan: jede Stunde (Stammtisch-Abstimmung und Erinnerung)
+  async scheduled(event, env, ctx) {
+    const stub = env.WICHTEL.get(env.WICHTEL.idFromName('gruppe'));
+    ctx.waitUntil(stub.fetch('https://intern/internal/cron', { method: 'POST' }));
   },
 };

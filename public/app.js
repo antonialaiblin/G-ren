@@ -294,7 +294,7 @@ function renderFinds() {
     const picks = draftPicks[f.id] || f.answers[me] || [];
     el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><p class="muted small status"></p><div class="row end acts"></div>';
     el.querySelector('.t').textContent = f.title;
-    el.querySelector('.by').textContent = ` von ${f.by}`;
+    el.querySelector('.by').textContent = f.by ? ` von ${f.by}` : ' · kommt jede Woche automatisch';
     const ul = el.querySelector('.opts');
     f.options.forEach((o, i) => {
       const yes = state.names.filter(n => (f.answers[n] || []).includes(i));
@@ -315,10 +315,14 @@ function renderFinds() {
       ul.appendChild(li);
     });
     el.querySelector('.status').textContent = f.done
-      ? `🎉 Alle können am ${rangeText(f.options[f.done.option])} Das steht jetzt im Kalender!`
+      ? (state.names.every(n => (f.answers[n] || []).includes(f.done.option))
+        ? `🎉 Alle können am ${rangeText(f.options[f.done.option])} Das steht jetzt im Kalender!`
+        : `🎉 Es wird ${rangeText(f.options[f.done.option])}, da können die meisten. Steht im Kalender!`)
       : missing.length
         ? `Noch nicht abgestimmt: ${missing.join(', ')}.`
-        : 'Alle haben abgestimmt, aber es gibt keinen Termin, an dem alle können. Schlagt neue Termine vor.';
+        : f.kind === 'stammtisch'
+          ? 'Alle haben abgestimmt, aber an keinem Tag können mindestens zwei. Diese Woche also kein Stammtisch.'
+          : 'Alle haben abgestimmt, aber es gibt keinen Termin, an dem alle können. Schlagt neue Termine vor.';
     const acts = el.querySelector('.acts');
     if (!f.done) {
       const send = document.createElement('button');
@@ -969,7 +973,22 @@ $('bday-set-form').closest('details').addEventListener('toggle', (e) => {
 });
 
 // ---------- Einstellungen ----------
+const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+(() => {
+  const sel = $('st-day');
+  sel.add(new Option('Kein Stammtisch', 0));
+  WEEKDAYS.forEach((d, i) => sel.add(new Option(d, i + 1)));
+  sel.onchange = async () => {
+    try { const r = await api('/api/stammtisch', { day: Number(sel.value) }); state.stammtischDay = r.stammtischDay; renderSettings(); }
+    catch (e2) { alert(e2.message); }
+  };
+})();
+
 function renderSettings() {
+  $('st-day').value = String(state.stammtischDay ?? 0);
+  $('st-note').textContent = state.stammtischDay
+    ? `Jeden ${WEEKDAYS[state.stammtischDay - 1]} kommt automatisch eine Abstimmung, an welchem Tag nächste Woche Stammtisch ist. Wer bis Sonntagabend nicht abgestimmt hat, wird erinnert. Trägt jemand den Stammtisch vorher fest in den Kalender ein, entfällt die Abstimmung. Gilt für alle.`
+    : 'Es kommt keine automatische Stammtisch-Abstimmung.';
   const meP = state.people?.[account.person] || {};
   setAvatar($('me-avatar'), account.person);
   $('me-name').textContent = meP.display || account.person;

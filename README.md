@@ -8,6 +8,7 @@ Die App der Gören (Milli, Lilly, Emma, Leo, Toni). Nach dem Anmelden kommt die 
 - der **Wichtel-Brief** im Weihnachtsstil; antippen öffnet ihn. Nach Friendsmas (`FRIENDSMAS` in `src/config.js`, 12.12.) verschwindet er
 - **Umfragen**: mit Vorschlägen zum Auswählen oder offen für Ideen von allen; außerdem **📝 Fragebögen** wie bei Google Forms (kurze Antwort, Absatz, Einzel- und Mehrfachauswahl, Dropdown, Skala, Ja/Nein, Datum; Pflichtfragen, „Sonstiges“, anonym)
 - im **Kalender** Termine mit festem Datum (auch mehrtägig, z. B. Urlaub) oder als „Wann könnt ihr?“-Abstimmung; sobald alle an einem Termin können, steht er im Kalender
+- **🍻 Stammtisch**: am eingestellten Stammtisch-Tag (Einstellungen, Standard Donnerstag) startet automatisch eine Abstimmung für nächste Woche; Sonntag ab 18 Uhr Erinnerung an alle, die noch nicht abgestimmt haben; entfällt, wenn der Stammtisch schon fest im Kalender steht. Läuft über einen stündlichen Cron in `wrangler.toml`
 - **💬 Chat** (rechts neben dem Kalender): der Gören-Chat mit allen, dazu eigene Unterchats, z. B. „Geschenk für Lilly“ ohne Lilly
 
 Wichteln:

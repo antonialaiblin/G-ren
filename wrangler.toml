@@ -13,3 +13,7 @@ class_name = "Wichtel"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Wichtel"]
+
+# Jede Stunde: Stammtisch-Abstimmung starten und am Sonntag erinnern
+[triggers]
+crons = ["5 * * * *"]
