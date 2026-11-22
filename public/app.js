@@ -41,7 +41,7 @@ async function load() {
 
 // ---------- Anzeige ----------
 function show(id) {
-  for (const s of ['auth-start', 'login-form', 'register-form', 'auth-pick']) $(s).hidden = s !== id;
+  for (const s of ['auth-start', 'login-form', 'register-form', 'auth-pick', 'bday-form']) $(s).hidden = s !== id;
 }
 
 function render() {
@@ -55,7 +55,9 @@ function render() {
     ? 'Alle haben ihren Wichtel gesehen. Frohes Shoppen!'
     : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${state.names.filter(x => !opened.has(x)).join(', ')}.`;
   // Leiste unten (Übersicht / Kalender) gibt es erst, wenn man angemeldet ist und weiß, wer man ist
-  const inside = !!(account && account.person);
+  // Erst rein, wenn man weiß, wer man ist, und den Geburtstag eingetragen hat
+  const needBday = !!(account && account.person && !state.people?.[account.person]?.birthday);
+  const inside = !!(account && account.person) && !needBday;
   // Wichteln gibt es bis einschließlich Friendsmas (12.12.), danach verschwindet der Brief
   const wichtelOn = inside && !(state.friendsmas && isoDay(new Date()) > state.friendsmas);
   const revealing = !$('reveal').hidden;
@@ -67,11 +69,12 @@ function render() {
   $('polls-box').hidden = !inside || revealing;
   if (inside) renderPolls();
   document.body.classList.toggle('tabs', inside);
-  const tab = inside && location.hash === '#kalender' ? 'cal' : 'home';
+  const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : 'home';
   showTab(tab);
   // Auf der Übersicht steht das große Logo, da braucht es die Kopfzeile nicht
   document.body.classList.toggle('home-in', inside && tab === 'home');
-  if (inside) renderSettings();
+  if (inside) { renderSettings(); renderChats(); }
+  if (tab !== 'chat' && openChat) leaveChat();
   if (inside) renderCal();
   $('admin-box').hidden = !(inside && state.isAdmin);
   if (inside && state.isAdmin) loadAccounts();
@@ -83,6 +86,11 @@ function render() {
     $('ready').hidden = true;
     $('auth').hidden = false;
     show(authView === 'login' ? 'login-form' : authView === 'register' ? 'register-form' : 'auth-start');
+  } else if (needBday) {
+    // Einmalig: Geburtstag eintragen
+    $('ready').hidden = true;
+    $('auth').hidden = false;
+    show('bday-form');
   } else if (!account.person) {
     // Angemeldet, aber noch keine Person gewählt
     $('ready').hidden = true;
@@ -109,6 +117,8 @@ function render() {
     $('ready').hidden = false;
     $('ready-error').hidden = true;
     $('ready-title').textContent = `Hallo ${shown}! 👋`;
+    setAvatar($('hello-avatar'), me);
+    $('hello-avatar').hidden = !state.people[me]?.avatar;
     $('addr-name').textContent = shown;
     $('addr-name2').textContent = shown;
     $('ready-hint').textContent = first
@@ -117,7 +127,7 @@ function render() {
     $('open-go').classList.toggle('new', first);
     // Nächster Termin aus dem Kalender
     const today = isoDay(new Date());
-    const next = (state.events || []).find(e => (e.end || e.day) >= today);
+    const next = allEvents().find(e => (e.end || e.day) >= today);
     const waiting = (state.finds || []).filter(f => !f.done && !f.answers[me]).length;
     $('find-hint').hidden = !waiting;
     if (waiting) {
@@ -138,6 +148,7 @@ function render() {
 function showTab(name) {
   $('tab-home').hidden = name !== 'home';
   $('tab-cal').hidden = name !== 'cal';
+  $('tab-chat').hidden = name !== 'chat';
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === name));
 }
 window.addEventListener('hashchange', () => { if (state) { render(); window.scrollTo(0, 0); } });
@@ -185,8 +196,27 @@ const pad = (n) => String(n).padStart(2, '0');
 const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 let calMonth = new Date(); calMonth.setDate(1);
 
+// Kalender-Termine plus Geburtstage (jedes Jahr wieder)
+function allEvents() {
+  const out = [...(state.events || [])];
+  const years = new Set([new Date().getFullYear(), new Date().getFullYear() + 1, calMonth.getFullYear()]);
+  const today = isoDay(new Date());
+  const inAYear = isoDay(new Date(Date.now() + 365 * 86400000));
+  for (const [person, p] of Object.entries(state.people || {})) {
+    if (!p.birthday) continue;
+    for (const y of years) {
+      const day = `${y}-${p.birthday}`;
+      if (y !== calMonth.getFullYear() && (day < today || day > inAYear)) continue;
+      const age = p.year ? ` (${y - p.year})` : '';
+      out.push({ id: `bday-${person}-${y}`, day, title: `🎂 ${p.display || person}${age}`, by: null, bday: true });
+    }
+  }
+  const seen = new Set();
+  return out.filter(e => !seen.has(e.id) && seen.add(e.id)).sort((a, b) => a.day.localeCompare(b.day));
+}
+
 function renderCal() {
-  const events = state.events || [];
+  const events = allEvents();
   const y = calMonth.getFullYear(), m = calMonth.getMonth();
   $('cal-title').textContent = `${MONTHS[m]} ${y}`;
   const grid = $('cal-grid');
@@ -207,7 +237,7 @@ function renderCal() {
     cell.innerHTML = '<span class="n"></span>';
     cell.querySelector('.n').textContent = d.getDate();
     for (const ev of events.filter(e => e.day <= key && key <= (e.end || e.day))) {
-      const p = document.createElement('span'); p.className = 'pill-ev'; p.textContent = ev.title; p.title = ev.title;
+      const p = document.createElement('span'); p.className = 'pill-ev' + (ev.bday ? ' bday' : ''); p.textContent = ev.title; p.title = ev.title;
       cell.appendChild(p);
     }
     cell.onclick = () => openEventForm(key);
@@ -216,7 +246,8 @@ function renderCal() {
   // Liste der nächsten Termine
   const list = $('ev-list');
   list.innerHTML = '';
-  const upcoming = events.filter(e => (e.end || e.day) >= today);
+  const inAYear = isoDay(new Date(Date.now() + 365 * 86400000));
+  const upcoming = events.filter(e => (e.end || e.day) >= today && (!e.bday || e.day <= inAYear));
   for (const ev of upcoming) {
     const [yy, mm, dd] = ev.day.split('-').map(Number);
     const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(yy, mm - 1, dd).getDay()];
@@ -225,7 +256,8 @@ function renderCal() {
     li.querySelector('.date').textContent = ev.end ? `${dd}.${mm}.\nbis ${shortDay(ev.end)}` : `${wd}\n${dd}.${mm}.`;
     li.querySelector('.date').style.whiteSpace = 'pre-line';
     li.querySelector('.t').textContent = ev.title;
-    li.querySelector('.by').textContent = `eingetragen von ${ev.by}`;
+    li.querySelector('.by').textContent = ev.bday ? 'Geburtstag' : `eingetragen von ${ev.by}`;
+    if (ev.bday) li.classList.add('bday');
     if (ev.by === account.person) {
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Termin löschen');
@@ -488,8 +520,113 @@ async function deleteEvent(id) {
 
 function err(id, msg) { $(id).textContent = msg; $(id).hidden = !msg; }
 
+// ---------- Profilbilder ----------
+const avatarCache = {};   // person -> { v, url }
+function initials(name) { return (name || '?').trim().slice(0, 1).toUpperCase(); }
+function setAvatar(el, person) {
+  const p = state.people?.[person] || {};
+  el.textContent = '';
+  el.style.backgroundImage = '';
+  el.dataset.person = person;
+  const c = avatarCache[person];
+  if (p.avatar && c && c.v === p.avatar && c.url) { el.style.backgroundImage = `url("${c.url}")`; return; }
+  el.textContent = initials(p.display || person);
+  if (!p.avatar) return;
+  if (!c || c.v !== p.avatar) {
+    avatarCache[person] = { v: p.avatar, url: null };
+    api('/api/avatar', { person }).then(r => {
+      if (!r.image) return;
+      avatarCache[person].url = r.image;
+      document.querySelectorAll(`.avatar[data-person="${CSS.escape(person)}"]`).forEach(x => { x.textContent = ''; x.style.backgroundImage = `url("${r.image}")`; });
+    }).catch(() => { delete avatarCache[person]; });
+  }
+}
+const displayName = (person) => state.people?.[person]?.display || person;
+
+// Bild verkleinern (quadratisch, 256 px), damit es schnell lädt
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 256, c = document.createElement('canvas');
+      c.width = c.height = size;
+      const k = Math.min(img.width, img.height);
+      c.getContext('2d').drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, size, size);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error('Das Bild konnte nicht gelesen werden.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+$('avatar-file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  err('avatar-error', '');
+  try {
+    const image = await shrinkImage(f);
+    const r = await api('/api/me/avatar', { image });
+    state.people = r.people;
+    avatarCache[account.person] = { v: r.people[account.person].avatar, url: image };
+    render();
+  } catch (e2) { err('avatar-error', e2.message); }
+});
+$('avatar-del').onclick = async () => {
+  try { const r = await api('/api/me/avatar', { image: null }); state.people = r.people; delete avatarCache[account.person]; render(); }
+  catch (e2) { err('avatar-error', e2.message); }
+};
+
+// ---------- Geburtstag ----------
+function fillBdaySelects(dId, mId) {
+  const d = $(dId), m = $(mId);
+  if (d.options.length) return;
+  d.add(new Option('Tag', ''));
+  for (let i = 1; i <= 31; i++) d.add(new Option(i, pad(i)));
+  m.add(new Option('Monat', ''));
+  MONTHS.forEach((name, i) => m.add(new Option(name, pad(i + 1))));
+}
+fillBdaySelects('bday-d', 'bday-m');
+fillBdaySelects('bday-d2', 'bday-m2');
+async function saveBday(d, m, y, errId) {
+  err(errId, '');
+  if (!d || !m) { err(errId, 'Bitte Tag und Monat wählen.'); return false; }
+  try {
+    const r = await api('/api/me/profile', { birthday: `${m}-${d}`, year: y.trim() || null });
+    state.people = r.people;
+    return true;
+  } catch (e2) { err(errId, e2.message); return false; }
+}
+$('bday-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (await saveBday($('bday-d').value, $('bday-m').value, $('bday-y').value, 'bday-error')) render();
+});
+$('bday-set-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('bday2-ok').textContent = '';
+  if (await saveBday($('bday-d2').value, $('bday-m2').value, $('bday-y2').value, 'bday2-error')) {
+    render();
+    $('bday2-ok').textContent = 'Gespeichert ✓';
+  }
+});
+$('bday-set-form').closest('details').addEventListener('toggle', (e) => {
+  if (!e.target.open) return;
+  const p = state.people[account.person] || {};
+  const [mm, dd] = (p.birthday || '-').split('-');
+  $('bday-d2').value = dd || ''; $('bday-m2').value = mm || ''; $('bday-y2').value = p.year || '';
+  $('bday2-ok').textContent = '';
+});
+
 // ---------- Einstellungen ----------
 function renderSettings() {
+  const meP = state.people?.[account.person] || {};
+  setAvatar($('me-avatar'), account.person);
+  $('me-name').textContent = meP.display || account.person;
+  $('avatar-del').hidden = !meP.avatar;
+  if (meP.birthday) {
+    const [mm, dd] = meP.birthday.split('-').map(Number);
+    $('set-bday-now').textContent = `(${dd}. ${MONTHS[mm - 1]})`;
+  }
   const shown = account.display || account.person;
   $('set-name-now').textContent = `(${shown})`;
   $('set-username').textContent = account.username;
@@ -517,6 +654,7 @@ $('name-form').addEventListener('submit', async (e) => {
   try {
     const r = await api('/api/me/name', { name: $('set-name').value });
     account = r.account; state.account = r.account;
+    if (state.people[account.person]) state.people[account.person].display = r.account.display;
     render();
     $('name-ok').textContent = 'Gespeichert ✓';
   } catch (e2) { err('name-error', e2.message); }
@@ -590,6 +728,211 @@ $('push-toggle').addEventListener('change', async (e) => {
     t.checked = !t.checked;
     $('push-note').textContent = e2.message || 'Das hat leider nicht geklappt.';
   } finally { t.disabled = false; }
+});
+
+// ---------- Chat ----------
+let openChat = null;        // id des offenen Chats
+let chatMsgs = [];
+let pollTimer = null;
+const readKey = (id) => `goeren-read-${account?.person}-${id}`;
+const lastRead = (id) => Number(store.get(readKey(id)) || 0);
+
+function renderChats() {
+  const chats = state.chats || [];
+  // Ungelesen-Zähler unten in der Leiste
+  const unread = chats.filter(c => c.last && c.last.from !== account.person && c.last.at > lastRead(c.id)).length;
+  $('chat-badge').hidden = !unread;
+  $('chat-badge').textContent = unread;
+  const list = $('chat-list');
+  list.innerHTML = '';
+  for (const c of chats) {
+    const li = document.createElement('li');
+    const isNew = c.last && c.last.from !== account.person && c.last.at > lastRead(c.id);
+    li.innerHTML = '<button type="button"><span class="c-name"></span><span class="c-last small muted"></span><span class="c-time small muted"></span></button>';
+    li.querySelector('.c-name').textContent = c.name;
+    li.querySelector('.c-last').textContent = c.last
+      ? `${c.last.from === account.person ? 'Du' : displayName(c.last.from)}: ${c.last.text}`
+      : c.id === 'all' ? 'Alle Gören' : c.members.map(displayName).join(', ');
+    li.querySelector('.c-time').textContent = c.last ? timeLabel(c.last.at) : '';
+    if (isNew) li.classList.add('new');
+    li.querySelector('button').onclick = () => enterChat(c.id);
+    list.appendChild(li);
+  }
+  if (openChat && !chats.some(c => c.id === openChat)) leaveChat();
+}
+
+function timeLabel(at) {
+  const d = new Date(at), now = new Date();
+  const hm = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (isoDay(d) === isoDay(now)) return hm;
+  const y = new Date(now); y.setDate(now.getDate() - 1);
+  if (isoDay(d) === isoDay(y)) return `gestern ${hm}`;
+  return `${d.getDate()}.${d.getMonth() + 1}. ${hm}`;
+}
+
+async function enterChat(id) {
+  const c = state.chats.find(x => x.id === id);
+  if (!c) return;
+  openChat = id;
+  chatMsgs = [];
+  $('chat-home').hidden = true;
+  $('chat-room').hidden = false;
+  document.body.classList.add('in-room');
+  $('room-name').textContent = c.name;
+  $('room-members').textContent = c.members.map(displayName).join(', ');
+  $('room-del').hidden = !(c.by === account.person && c.id !== 'all');
+  $('msgs').innerHTML = '<p class="muted small center">Lädt …</p>';
+  await fetchMsgs(true);
+  startPolling();
+}
+
+function leaveChat() {
+  openChat = null;
+  stopPolling();
+  $('chat-home').hidden = false;
+  $('chat-room').hidden = true;
+  document.body.classList.remove('in-room');
+  if (state) renderChats();
+}
+
+async function fetchMsgs(first = false) {
+  if (!openChat) return;
+  const id = openChat;
+  try {
+    const since = chatMsgs.length ? chatMsgs[chatMsgs.length - 1].at : 0;
+    const r = await api('/api/chat/messages', { chat: id, since });
+    if (id !== openChat) return;
+    state.chats = r.chats;
+    const known = new Set(chatMsgs.map(m => m.id));
+    const fresh = r.messages.filter(m => !known.has(m.id));
+    if (first || fresh.length) {
+      chatMsgs.push(...fresh);
+      drawMsgs(first);
+    }
+    if (chatMsgs.length) store.set(readKey(id), chatMsgs[chatMsgs.length - 1].at);
+    renderChats();
+  } catch (e2) {
+    if (first) $('msgs').innerHTML = '';
+  }
+}
+
+function drawMsgs(jump) {
+  const box = $('msgs');
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120;
+  box.innerHTML = '';
+  if (!chatMsgs.length) box.innerHTML = '<p class="muted small center">Noch keine Nachrichten. Schreib die erste!</p>';
+  let lastDay = '', lastFrom = '';
+  for (const m of chatMsgs) {
+    const day = isoDay(new Date(m.at));
+    if (day !== lastDay) {
+      const d = document.createElement('p'); d.className = 'day-sep small muted';
+      const [y, mo, dd] = day.split('-').map(Number);
+      d.textContent = day === isoDay(new Date()) ? 'Heute' : `${dd}. ${MONTHS[mo - 1]}${y !== new Date().getFullYear() ? ' ' + y : ''}`;
+      box.appendChild(d);
+      lastDay = day; lastFrom = '';
+    }
+    const mine = m.from === account.person;
+    const row = document.createElement('div');
+    row.className = 'msg' + (mine ? ' mine' : '') + (m.from === lastFrom ? ' cont' : '');
+    row.innerHTML = '<span class="avatar"></span><div class="bubble"><span class="from small"></span><span class="txt"></span><span class="t small"></span></div>';
+    setAvatar(row.querySelector('.avatar'), m.from);
+    row.querySelector('.from').textContent = displayName(m.from);
+    row.querySelector('.txt').textContent = m.text;
+    row.querySelector('.t').textContent = new Date(m.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    box.appendChild(row);
+    lastFrom = m.from;
+  }
+  if (jump || nearBottom) window.scrollTo(0, document.body.scrollHeight);
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => { if (!document.hidden) fetchMsgs(); }, 4000);
+}
+function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+// Chat-Liste ab und zu auffrischen, damit der Zähler unten stimmt
+setInterval(async () => {
+  if (document.hidden || !account?.person || openChat) return;
+  try { const r = await api('/api/state'); state.chats = r.chats; state.people = r.people; renderChats(); } catch {}
+}, 30000);
+
+$('room-back').onclick = leaveChat;
+$('room-del').onclick = async () => {
+  const c = state.chats.find(x => x.id === openChat);
+  if (!c || !confirm(`Chat „${c.name}“ mit allen Nachrichten löschen?`)) return;
+  try { const r = await api('/api/chats/delete', { chat: c.id }); state.chats = r.chats; leaveChat(); } catch (e2) { alert(e2.message); }
+};
+$('composer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('msg-text').value.trim();
+  if (!text || !openChat) return;
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const r = await api('/api/chat/send', { chat: openChat, text });
+    $('msg-text').value = '';
+    $('msg-text').style.height = '';
+    if (!chatMsgs.some(m => m.id === r.message.id)) chatMsgs.push(r.message);
+    store.set(readKey(openChat), r.message.at);
+    drawMsgs(true);
+  } catch (e2) { alert(e2.message); }
+  finally { if (btn) btn.disabled = false; $('msg-text').focus(); }
+});
+// Enter schickt ab (am Computer), Umschalt+Enter macht eine neue Zeile
+$('msg-text').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); $('composer').requestSubmit(); }
+});
+$('msg-text').addEventListener('input', (e) => {
+  e.target.style.height = '';
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+});
+
+// Neuer Chat
+$('chat-new').onclick = () => {
+  $('chat-form').hidden = false;
+  $('chat-name').value = '';
+  err('chat-error', '');
+  const box = $('chat-members');
+  box.innerHTML = '';
+  for (const n of state.names) {
+    if (n === account.person) continue;
+    const l = document.createElement('label');
+    l.innerHTML = '<input type="checkbox" checked><span class="avatar"></span><span class="nm"></span>';
+    l.querySelector('input').value = n;
+    setAvatar(l.querySelector('.avatar'), n);
+    l.querySelector('.nm').textContent = displayName(n);
+    box.appendChild(l);
+  }
+  // Schnell-Knöpfe: Geschenk-Chat für die nächsten Geburtstage
+  const hint = $('chat-bday-hint');
+  hint.innerHTML = '';
+  const today = isoDay(new Date());
+  const soon = allEvents().filter(e => e.bday && e.day >= today).slice(0, 3);
+  const others = state.names.filter(n => n !== account.person);
+  for (const ev of soon) {
+    const person = ev.id.split('-').slice(1, -1).join('-');
+    if (!others.includes(person)) continue;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip';
+    b.textContent = `🎁 Geschenk für ${displayName(person)}`;
+    b.onclick = () => {
+      $('chat-name').value = `Geschenk für ${displayName(person)} 🎁`;
+      box.querySelectorAll('input').forEach(i => { i.checked = i.value !== person; });
+    };
+    hint.appendChild(b);
+  }
+};
+$('chat-cancel').onclick = () => { $('chat-form').hidden = true; };
+$('chat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('chat-error', '');
+  const members = [...$('chat-members').querySelectorAll('input:checked')].map(i => i.value);
+  try {
+    const r = await api('/api/chats/add', { name: $('chat-name').value, members });
+    state.chats = r.chats;
+    $('chat-form').hidden = true;
+    renderChats();
+    enterChat(r.id);
+  } catch (e2) { err('chat-error', e2.message); }
 });
 
 // ---------- Anmelden / Registrieren ----------

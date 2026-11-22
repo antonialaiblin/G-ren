@@ -36,6 +36,11 @@ export class Wichtel extends DurableObject {
     s.events ||= [];
     s.push ||= {};
     s.polls ||= [];
+    s.chats ||= [];
+    // Der große Gören-Chat mit allen
+    const all = s.chats.find(c => c.id === 'all');
+    if (!all) { s.chats.unshift({ id: 'all', name: 'Gören-Chat 💬', members: [...s.names], at: Date.now() }); changed = true; }
+    else if (all.members.join('|') !== s.names.join('|')) { all.members = [...s.names]; changed = true; }
     s.finds ||= [];   // „Wann könnt ihr?“-Abstimmungen für den Kalender
     s.seeded ||= {};
     // Friendsmas steht automatisch im Kalender (nur einmal, danach kann Toni ihn wie jeden Termin löschen)
@@ -90,11 +95,15 @@ export class Wichtel extends DurableObject {
       display: a.display || null,   // selbst gewählter Name für „Hallo …“
     } : null;
     // Benachrichtigung an alle anderen schicken, die sie angeschaltet haben
-    const notify = async (msg) => {
+    // onlyFor: nur an diese Personen (z. B. die Mitglieder eines Chats)
+    const notify = async (msg, onlyFor = null, link = '/#kalender') => {
       if (!s.vapid) return;
-      const subs = Object.entries(s.push).filter(([, p]) => s.accounts[p.user]?.person !== me);
+      const subs = Object.entries(s.push).filter(([, p]) => {
+        const who = s.accounts[p.user]?.person;
+        return who !== me && (!onlyFor || onlyFor.includes(who));
+      });
       if (!subs.length) return;
-      for (const [, p] of subs) p.msg = { text: msg, at: Date.now() };
+      for (const [, p] of subs) p.msg = { text: msg, at: Date.now(), link };
       await save();
       const ok = await Promise.all(subs.map(([ep]) => sendPush(s.vapid, ep, url.origin)));
       let gone = false;
@@ -111,6 +120,8 @@ export class Wichtel extends DurableObject {
         events: me ? s.events : [],
         polls: me ? s.polls : [],
         finds: me ? s.finds : [],
+        people: me ? people() : {},
+        chats: me ? myChats() : [],
         admin: ADMIN,
         isAdmin: me === ADMIN,   // Kalender sehen nur Angemeldete
         budget: BUDGET,
@@ -119,13 +130,28 @@ export class Wichtel extends DurableObject {
       });
     }
 
+    // Profil-Infos aller (Anzeigename, Geburtstag, ob es ein Profilbild gibt)
+    function people() {
+      const out = {};
+      for (const a of Object.values(s.accounts)) {
+        if (!a.person || !s.names.includes(a.person)) continue;
+        out[a.person] = { display: a.display || a.person, birthday: a.birthday || null, year: a.year || null, avatar: a.avatar || 0 };
+      }
+      return out;
+    }
+    function myChats() {
+      return s.chats.filter(c => c.members.includes(me)).map(c => ({
+        id: c.id, name: c.name, members: c.members, by: c.by || null, last: c.last || null,
+      })).sort((a, b) => (b.last?.at || 0) - (a.last?.at || 0));
+    }
+
     // ---------- Benachrichtigung abholen (fragt das Handy selbst, nachdem es geweckt wurde) ----------
     if (path === '/api/push/latest' && request.method === 'POST') {
       let b = {};
       try { b = await request.json(); } catch {}
       const p = s.push[String(b.endpoint || '')];
       const msg = p?.msg && Date.now() - p.msg.at < 2 * 86400_000 ? p.msg.text : null;
-      return json({ text: msg || 'Es gibt Neuigkeiten bei den Gören.' });
+      return json({ text: msg || 'Es gibt Neuigkeiten bei den Gören.', link: p?.msg?.link || '/' });
     }
 
     if (request.method !== 'POST') return json({ error: 'Nicht gefunden.' }, 404);
@@ -246,6 +272,85 @@ export class Wichtel extends DurableObject {
     }
 
     if (!me) return json({ error: 'Bitte wähl zuerst aus, wer du bist.' }, 403);
+
+    // ---------- Profil: Geburtstag ----------
+    if (path === '/api/me/profile') {
+      const md = String(body.birthday || '');
+      const m = /^(\d{2})-(\d{2})$/.exec(md);
+      const ok = m && !isNaN(Date.parse(`2000-${md}`)) && new Date(`2000-${md}`).getUTCDate() === Number(m[2]);
+      if (!ok) return json({ error: 'Bitte Tag und Monat von deinem Geburtstag wählen.' }, 400);
+      const y = body.year ? Number(body.year) : null;
+      if (y !== null && !(Number.isInteger(y) && y >= 1920 && y <= new Date().getFullYear())) return json({ error: 'Das Geburtsjahr stimmt nicht.' }, 400);
+      acct.birthday = md;
+      acct.year = y;
+      await save();
+      return json({ ok: true, people: people() });
+    }
+
+    // ---------- Profil: Profilbild ----------
+    if (path === '/api/me/avatar') {
+      const img = body.image;
+      if (img === null) {
+        await this.ctx.storage.delete(`avatar:${me}`);
+        acct.avatar = 0;
+      } else {
+        if (typeof img !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > 300_000)
+          return json({ error: 'Das Bild ist zu groß oder kein Bild.' }, 400);
+        await this.ctx.storage.put(`avatar:${me}`, img);
+        acct.avatar = Date.now();
+      }
+      await save();
+      return json({ ok: true, people: people() });
+    }
+    if (path === '/api/avatar') {
+      const img = s.names.includes(body.person) ? await this.ctx.storage.get(`avatar:${body.person}`) : null;
+      return json({ image: img || null });
+    }
+
+    // ---------- Chat ----------
+    const chat = s.chats.find(c => c.id === body.chat && c.members.includes(me));
+    if (path === '/api/chats/add') {
+      const name = String(body.name || '').trim().slice(0, 60);
+      if (!name) return json({ error: 'Bitte gib dem Chat einen Namen.' }, 400);
+      const members = [...new Set([me, ...(Array.isArray(body.members) ? body.members : [])])].filter(n => s.names.includes(n));
+      if (members.length < 2) return json({ error: 'Bitte wähl mindestens eine weitere Person aus.' }, 400);
+      if (s.chats.length >= 60) return json({ error: 'Es gibt schon zu viele Chats. Lösch erst einen alten.' }, 400);
+      const c = { id: newId(), name, members: s.names.filter(n => members.includes(n)), by: me, at: Date.now() };
+      s.chats.push(c);
+      await save();
+      await notify(`💬 ${acct.display || me} hat dich in den Chat „${name}“ geholt.`, c.members, '/#chat');
+      return json({ ok: true, chats: myChats(), id: c.id });
+    }
+    if (path === '/api/chats/delete') {
+      if (!chat || chat.id === 'all') return json({ error: 'Diesen Chat kann man nicht löschen.' }, 400);
+      if (chat.by !== me) return json({ error: 'Nur wer den Chat erstellt hat, kann ihn löschen.' }, 403);
+      s.chats = s.chats.filter(c => c.id !== chat.id);
+      await this.ctx.storage.delete(`chat:${chat.id}`);
+      await save();
+      return json({ ok: true, chats: myChats() });
+    }
+    if (path === '/api/chat/messages') {
+      if (!chat) return json({ error: 'Diesen Chat gibt es nicht (mehr).' }, 404);
+      const msgs = (await this.ctx.storage.get(`chat:${chat.id}`)) || [];
+      const since = Number(body.since) || 0;
+      return json({ messages: msgs.filter(x => x.at > since), chats: myChats() });
+    }
+    if (path === '/api/chat/send') {
+      if (!chat) return json({ error: 'Diesen Chat gibt es nicht (mehr).' }, 404);
+      const text = String(body.text || '').trim().slice(0, 2000);
+      if (!text) return json({ error: 'Schreib erst etwas.' }, 400);
+      const msgs = (await this.ctx.storage.get(`chat:${chat.id}`)) || [];
+      const last = msgs.length ? msgs[msgs.length - 1].at : 0;
+      const msg = { id: newId(), from: me, text, at: Math.max(Date.now(), last + 1) };
+      msgs.push(msg);
+      if (msgs.length > 1000) msgs.splice(0, msgs.length - 1000);
+      chat.last = { at: msg.at, from: me, text: text.slice(0, 80) };
+      await this.ctx.storage.put(`chat:${chat.id}`, msgs);
+      await save();
+      const short = text.length > 80 ? text.slice(0, 80) + '…' : text;
+      await notify(`💬 ${acct.display || me} (${chat.name}): ${short}`, chat.members, '/#chat');
+      return json({ ok: true, message: msg });
+    }
 
     // ---------- Umschlag öffnen ----------
     if (path === '/api/reveal') {
@@ -383,7 +488,7 @@ export class Wichtel extends DurableObject {
       if (s.polls.length >= 50) return json({ error: 'Es gibt schon zu viele Umfragen. Lösch erst eine alte.' }, 400);
       s.polls.unshift({ id: newId(), q, ideas, by: me, options: opts.map(t => ({ id: newId(), t, by: me, votes: [] })), at: Date.now() });
       await save();
-      await notify(`📊 ${acct.display || me} fragt: ${q}`);
+      await notify(`📊 ${acct.display || me} fragt: ${q}`, null, '/');
       return json({ ok: true, polls: s.polls });
     }
     const poll = s.polls.find(x => x.id === body.id);
