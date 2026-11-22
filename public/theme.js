@@ -34,7 +34,7 @@
     }
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = dark ? '#151816' : '#2f6f5e';
+    if (meta) meta.content = dark ? '#1a1326' : '#6b3fa0';
   }
 
   window.goerenTheme = {
