@@ -92,77 +92,6 @@
       <p class="next-ev" id="find-hint" hidden></p>
     </section>
 
-    <!-- Einstellungen -->
-    <section id="settings" class="card" hidden>
-      <h2>⚙️ Profil &amp; Einstellungen</h2>
-
-      <div class="profile-row">
-        <span class="avatar big" id="me-avatar"></span>
-        <div>
-          <b id="me-name"></b>
-          <div class="row" style="margin-top:6px">
-            <label class="small-btn file-btn">📷 Profilbild wählen<input type="file" id="avatar-file" accept="image/*" hidden></label>
-            <button type="button" class="link" id="avatar-del" hidden>Bild entfernen</button>
-          </div>
-          <p class="error small" id="avatar-error" hidden></p>
-        </div>
-      </div>
-
-      <details class="set">
-        <summary>🎂 Geburtstag <span class="muted small" id="set-bday-now"></span></summary>
-        <form id="bday-set-form">
-          <div class="bday-row">
-            <label class="field"><span>Tag</span><select id="bday-d2" required></select></label>
-            <label class="field"><span>Monat</span><select id="bday-m2" required></select></label>
-            <label class="field"><span>Jahr (optional)</span><input id="bday-y2" inputmode="numeric" maxlength="4" placeholder="z. B. 1998"></label>
-          </div>
-          <p class="error" id="bday2-error" hidden></p>
-          <div class="row end"><span class="saved" id="bday2-ok" aria-live="polite"></span><button type="submit">Speichern</button></div>
-        </form>
-      </details>
-
-      <details class="set">
-        <summary>👤 Name ändern <span class="muted small" id="set-name-now"></span></summary>
-        <form id="name-form" autocomplete="off">
-          <label class="field"><span>So begrüßt dich die App</span><input id="set-name" maxlength="30" minlength="2" required></label>
-          <p class="muted small">Zum Anmelden nimmst du weiter deinen Benutzernamen: <b id="set-username"></b></p>
-          <p class="error" id="name-error" hidden></p>
-          <div class="row end"><span class="saved" id="name-ok" aria-live="polite"></span><button type="submit">Speichern</button></div>
-        </form>
-      </details>
-
-      <details class="set">
-        <summary>🔒 Passwort ändern</summary>
-        <form id="pw-form">
-          <label class="field"><span>Jetziges Passwort</span><input type="password" id="pw-old" maxlength="100" autocomplete="current-password" required></label>
-          <label class="field"><span>Neues Passwort (mind. 4 Zeichen)</span><input type="password" id="pw-new" minlength="4" maxlength="100" autocomplete="new-password" required></label>
-          <label class="field"><span>Neues Passwort wiederholen</span><input type="password" id="pw-new2" minlength="4" maxlength="100" autocomplete="new-password" required></label>
-          <p class="error" id="pw-error" hidden></p>
-          <div class="row end"><span class="saved" id="pw-ok" aria-live="polite"></span><button type="submit">Passwort ändern</button></div>
-        </form>
-      </details>
-
-      <div class="set-row">
-        <div class="set-label">🌗 Ansicht</div>
-        <div class="seg" id="theme-seg" role="radiogroup" aria-label="Ansicht">
-          <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
-          <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
-          <button type="button" role="radio" data-theme-choice="auto">🌅 Auto</button>
-        </div>
-        <p class="muted small" id="theme-note"></p>
-      </div>
-
-      <div class="set-row">
-        <label class="switch-row">
-          <span class="set-label">🔔 Benachrichtigungen</span>
-          <input type="checkbox" class="switch" id="push-toggle">
-        </label>
-        <p class="muted small" id="push-note">Bekomm eine Nachricht aufs Handy, wenn jemand einen Termin einträgt.</p>
-      </div>
-
-      <div class="row end"><button type="button" class="ghost" data-logout>Abmelden</button></div>
-    </section>
-
     <!-- Wichteln: Brief im Weihnachtsstil -->
     <section id="wichtel" class="card xmas" hidden>
       <h2>🎄 Wichteln</h2>
@@ -312,6 +241,80 @@
       </section>
     </div>
 
+    <!-- ===== Seite: Einstellungen (Zahnrad unten rechts) ===== -->
+    <div id="tab-set" class="tab" hidden>
+    <!-- Einstellungen -->
+    <section id="settings" class="card" hidden>
+      <h2>⚙️ Profil &amp; Einstellungen</h2>
+
+      <div class="profile-row">
+        <span class="avatar big" id="me-avatar"></span>
+        <div>
+          <b id="me-name"></b>
+          <div class="row" style="margin-top:6px">
+            <label class="small-btn file-btn">📷 Profilbild wählen<input type="file" id="avatar-file" accept="image/*" hidden></label>
+            <button type="button" class="link" id="avatar-del" hidden>Bild entfernen</button>
+          </div>
+          <p class="error small" id="avatar-error" hidden></p>
+        </div>
+      </div>
+
+      <details class="set">
+        <summary>🎂 Geburtstag <span class="muted small" id="set-bday-now"></span></summary>
+        <form id="bday-set-form">
+          <div class="bday-row">
+            <label class="field"><span>Tag</span><select id="bday-d2" required></select></label>
+            <label class="field"><span>Monat</span><select id="bday-m2" required></select></label>
+            <label class="field"><span>Jahr (optional)</span><input id="bday-y2" inputmode="numeric" maxlength="4" placeholder="z. B. 1998"></label>
+          </div>
+          <p class="error" id="bday2-error" hidden></p>
+          <div class="row end"><span class="saved" id="bday2-ok" aria-live="polite"></span><button type="submit">Speichern</button></div>
+        </form>
+      </details>
+
+      <details class="set">
+        <summary>👤 Name ändern <span class="muted small" id="set-name-now"></span></summary>
+        <form id="name-form" autocomplete="off">
+          <label class="field"><span>So begrüßt dich die App</span><input id="set-name" maxlength="30" minlength="2" required></label>
+          <p class="muted small">Zum Anmelden nimmst du weiter deinen Benutzernamen: <b id="set-username"></b></p>
+          <p class="error" id="name-error" hidden></p>
+          <div class="row end"><span class="saved" id="name-ok" aria-live="polite"></span><button type="submit">Speichern</button></div>
+        </form>
+      </details>
+
+      <details class="set">
+        <summary>🔒 Passwort ändern</summary>
+        <form id="pw-form">
+          <label class="field"><span>Jetziges Passwort</span><input type="password" id="pw-old" maxlength="100" autocomplete="current-password" required></label>
+          <label class="field"><span>Neues Passwort (mind. 4 Zeichen)</span><input type="password" id="pw-new" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+          <label class="field"><span>Neues Passwort wiederholen</span><input type="password" id="pw-new2" minlength="4" maxlength="100" autocomplete="new-password" required></label>
+          <p class="error" id="pw-error" hidden></p>
+          <div class="row end"><span class="saved" id="pw-ok" aria-live="polite"></span><button type="submit">Passwort ändern</button></div>
+        </form>
+      </details>
+
+      <div class="set-row">
+        <div class="set-label">🌗 Ansicht</div>
+        <div class="seg" id="theme-seg" role="radiogroup" aria-label="Ansicht">
+          <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
+          <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
+          <button type="button" role="radio" data-theme-choice="auto">🌅 Auto</button>
+        </div>
+        <p class="muted small" id="theme-note"></p>
+      </div>
+
+      <div class="set-row">
+        <label class="switch-row">
+          <span class="set-label">🔔 Benachrichtigungen</span>
+          <input type="checkbox" class="switch" id="push-toggle">
+        </label>
+        <p class="muted small" id="push-note">Bekomm eine Nachricht aufs Handy, bei neuen Chat-Nachrichten, Terminen und Umfragen.</p>
+      </div>
+
+      <div class="row end"><button type="button" class="ghost" data-logout>Abmelden</button></div>
+    </section>
+    </div>
+
     <!-- ===== Seite: Chat ===== -->
     <div id="tab-chat" class="tab" hidden>
       <div id="chat-home">
@@ -352,6 +355,7 @@
     <a href="#start" data-tab="home"><span aria-hidden="true">🏠</span>Übersicht</a>
     <a href="#kalender" data-tab="cal"><span aria-hidden="true">📅</span>Kalender</a>
     <a href="#chat" data-tab="chat"><span aria-hidden="true">💬</span>Chat<i class="badge" id="chat-badge" hidden></i></a>
+    <a href="#einstellungen" data-tab="set" class="gear" aria-label="Einstellungen" title="Einstellungen"><span aria-hidden="true">⚙️</span></a>
   </nav>
   <script src="/app.js" type="module"></script>
 </body>

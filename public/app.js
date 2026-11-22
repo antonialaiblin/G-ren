@@ -64,12 +64,12 @@ function render() {
   $('status').hidden = !wichtelOn;
   $('foot').hidden = !wichtelOn;
   $('tabbar').hidden = !inside;
-  $('settings').hidden = !inside || revealing;
+  $('settings').hidden = !inside;
   $('wichtel').hidden = !wichtelOn || revealing;
   $('polls-box').hidden = !inside || revealing;
   if (inside) renderPolls();
   document.body.classList.toggle('tabs', inside);
-  const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : 'home';
+  const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
   // Auf der Übersicht steht das große Logo, da braucht es die Kopfzeile nicht
   document.body.classList.toggle('home-in', inside && tab === 'home');
@@ -149,6 +149,7 @@ function showTab(name) {
   $('tab-home').hidden = name !== 'home';
   $('tab-cal').hidden = name !== 'cal';
   $('tab-chat').hidden = name !== 'chat';
+  $('tab-set').hidden = name !== 'set';
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === name));
 }
 window.addEventListener('hashchange', () => { if (state) { render(); window.scrollTo(0, 0); } });
@@ -715,7 +716,7 @@ $('push-toggle').addEventListener('change', async (e) => {
       await navigator.serviceWorker.ready;
       const sub = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
       await api('/api/push/subscribe', { subscription: sub.toJSON() });
-      $('push-note').textContent = 'An ✓ Du bekommst eine Nachricht, wenn jemand einen Termin einträgt.';
+      $('push-note').textContent = 'An ✓ Du bekommst eine Nachricht, bei neuen Chat-Nachrichten, Terminen und Umfragen.';
     } else {
       const sub = swReg && await swReg.pushManager.getSubscription();
       if (sub) {
@@ -1024,7 +1025,6 @@ $('open-go').onclick = async () => {
 function reveal(r) {
   $('auth').hidden = true;
   $('ready').hidden = true;
-  $('settings').hidden = true;
   $('wichtel').hidden = true;
   document.body.classList.remove('home-in');
   $('reveal').hidden = false;

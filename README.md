@@ -4,7 +4,7 @@ Die App der Gören (Milli, Lilly, Emma, Leo, Toni). Nach dem Anmelden kommt die 
 
 - oben das Logo und „Hallo Toni!“ (bzw. der eigene Name, mit Profilbild)
 - beim ersten Anmelden trägt jede einmal ihren **Geburtstag** ein; er steht dann jedes Jahr automatisch im Kalender
-- **Profil & Einstellungen**: Profilbild, Geburtstag, eigenen Namen und Passwort ändern, Ansicht hell, dunkel oder automatisch (nach Sonnenauf- und -untergang in Berlin), Benachrichtigungen an/aus
+- **Profil & Einstellungen** (⚙️ Zahnrad unten rechts): Profilbild, Geburtstag, eigenen Namen und Passwort ändern, Ansicht hell, dunkel oder automatisch (nach Sonnenauf- und -untergang in Berlin), Benachrichtigungen an/aus
 - der **Wichtel-Brief** im Weihnachtsstil; antippen öffnet ihn. Nach Friendsmas (`FRIENDSMAS` in `src/config.js`, 12.12.) verschwindet er
 - **Umfragen**: mit Vorschlägen zum Auswählen oder offen für Ideen von allen
 - im **Kalender** Termine mit festem Datum (auch mehrtägig, z. B. Urlaub) oder als „Wann könnt ihr?“-Abstimmung; sobald alle an einem Termin können, steht er im Kalender
