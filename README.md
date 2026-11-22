@@ -6,7 +6,7 @@ Die App der Gören (Milli, Lilly, Emma, Leo, Toni). Nach dem Anmelden kommt die 
 - beim ersten Anmelden trägt jede einmal ihren **Geburtstag** ein; er steht dann jedes Jahr automatisch im Kalender
 - **Profil & Einstellungen** (⚙️ Zahnrad unten rechts): Profilbild, Geburtstag, eigenen Namen und Passwort ändern, Ansicht hell, dunkel oder automatisch (nach Sonnenauf- und -untergang in Berlin), Benachrichtigungen an/aus
 - der **Wichtel-Brief** im Weihnachtsstil; antippen öffnet ihn. Nach Friendsmas (`FRIENDSMAS` in `src/config.js`, 12.12.) verschwindet er
-- **Umfragen**: mit Vorschlägen zum Auswählen oder offen für Ideen von allen
+- **Umfragen**: mit Vorschlägen zum Auswählen oder offen für Ideen von allen; außerdem **📝 Fragebögen** wie bei Google Forms (kurze Antwort, Absatz, Einzel- und Mehrfachauswahl, Dropdown, Skala, Ja/Nein, Datum; Pflichtfragen, „Sonstiges“, anonym)
 - im **Kalender** Termine mit festem Datum (auch mehrtägig, z. B. Urlaub) oder als „Wann könnt ihr?“-Abstimmung; sobald alle an einem Termin können, steht er im Kalender
 - **💬 Chat** (rechts neben dem Kalender): der Gören-Chat mit allen, dazu eigene Unterchats, z. B. „Geschenk für Lilly“ ohne Lilly
 

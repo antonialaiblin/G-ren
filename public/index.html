@@ -111,8 +111,23 @@
     <section id="polls-box" class="card" hidden>
       <div class="row head-row">
         <h2>📊 Umfragen</h2>
-        <button type="button" class="small-btn" id="poll-new">+ Neue Umfrage</button>
+        <div class="row" style="flex-wrap:nowrap">
+          <button type="button" class="small-btn" id="poll-new">+ Umfrage</button>
+          <button type="button" class="small-btn" id="form-new">📝 Fragebogen</button>
+        </div>
       </div>
+
+      <form id="form-builder" class="sub-form" hidden autocomplete="off" novalidate>
+        <label class="field"><span>Titel vom Fragebogen</span><input id="fb-title" maxlength="120" placeholder="z. B. Planung Urlaub Polen 🏖️"></label>
+        <label class="field text"><span>Beschreibung (optional)</span><textarea id="fb-desc" rows="2" maxlength="500" placeholder="Worum geht es?"></textarea></label>
+        <label class="check-row"><input type="checkbox" id="fb-anon"> Anonym: Antworten ohne Namen anzeigen</label>
+        <div id="fb-questions"></div>
+        <button type="button" class="ghost add-q" id="fb-add">+ Frage hinzufügen</button>
+        <p class="error" id="fb-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" id="fb-cancel">Abbrechen</button><button type="submit">Fragebogen starten</button></div>
+      </form>
+
+      <div id="form-list"></div>
 
       <form id="poll-form" class="sub-form" hidden autocomplete="off">
         <label class="field"><span>Deine Frage</span><input id="poll-q" maxlength="120" required placeholder="z. B. Was wollen wir heute Abend kochen?"></label>

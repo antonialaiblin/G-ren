@@ -37,6 +37,7 @@ export class Wichtel extends DurableObject {
     s.push ||= {};
     s.polls ||= [];
     s.chats ||= [];
+    s.forms ||= [];   // Fragebögen (wie Google Forms)
     // Der große Gören-Chat mit allen
     const all = s.chats.find(c => c.id === 'all');
     if (!all) { s.chats.unshift({ id: 'all', name: 'Gören-Chat 💬', members: [...s.names], at: Date.now() }); changed = true; }
@@ -119,6 +120,7 @@ export class Wichtel extends DurableObject {
         account: accountInfo(acct),
         events: me ? s.events : [],
         polls: me ? s.polls : [],
+        forms: me ? s.forms.map(formView) : [],
         finds: me ? s.finds : [],
         people: me ? people() : {},
         chats: me ? myChats() : [],
@@ -138,6 +140,24 @@ export class Wichtel extends DurableObject {
         out[a.person] = { display: a.display || a.person, birthday: a.birthday || null, year: a.year || null, avatar: a.avatar || 0 };
       }
       return out;
+    }
+    // Fragebogen für die Anzeige: bei anonymen Fragebögen ohne Namen
+    function formView(f) {
+      const entries = Object.entries(f.responses || {});
+      const answered = entries.map(([n]) => n);
+      const open = !f.closed;
+      // Ergebnisse sieht man, wenn man selbst geantwortet hat, wenn man den Fragebogen erstellt hat oder er beendet ist
+      const canSee = !open || f.by === me || answered.includes(me);
+      let responses = [];
+      if (canSee) {
+        responses = f.anonymous
+          ? entries.map(([, r]) => ({ who: null, r })).sort(() => Math.random() - 0.5)
+          : entries.map(([who, r]) => ({ who, r }));
+      }
+      return {
+        id: f.id, title: f.title, desc: f.desc, by: f.by, at: f.at, closed: f.closed || null, anonymous: !!f.anonymous,
+        questions: f.questions, answered, mine: f.responses?.[me] || null, canSee, responses,
+      };
     }
     function myChats() {
       return s.chats.filter(c => c.members.includes(me)).map(c => ({
@@ -475,6 +495,74 @@ export class Wichtel extends DurableObject {
       s.finds = s.finds.filter(x => x.id !== body.id);
       await save();
       return json({ ok: true, finds: s.finds, events: s.events });
+    }
+
+    // ---------- Fragebögen ----------
+    const QTYPES = ['short', 'long', 'single', 'multi', 'dropdown', 'scale', 'yesno', 'date'];
+    if (path === '/api/forms/add') {
+      const title = String(body.title || '').trim().slice(0, 120);
+      if (!title) return json({ error: 'Bitte gib dem Fragebogen einen Titel.' }, 400);
+      const qs = (Array.isArray(body.questions) ? body.questions : []).slice(0, 30).map(q => {
+        const type = QTYPES.includes(q?.type) ? q.type : 'short';
+        const opts = [...new Set((Array.isArray(q?.options) ? q.options : []).map(o => String(o || '').trim().slice(0, 80)).filter(Boolean))].slice(0, 20);
+        const max = Math.min(10, Math.max(3, Number(q?.max) || 5));
+        return {
+          id: newId(), type, text: String(q?.text || '').trim().slice(0, 200), required: !!q?.required,
+          ...(['single', 'multi', 'dropdown'].includes(type) ? { options: opts, other: !!q?.other && type !== 'dropdown' } : {}),
+          ...(type === 'scale' ? { max, low: String(q?.low || '').slice(0, 30), high: String(q?.high || '').slice(0, 30) } : {}),
+        };
+      });
+      if (!qs.length) return json({ error: 'Bitte mindestens eine Frage hinzufügen.' }, 400);
+      const bad = qs.findIndex(q => !q.text || (q.options && q.options.length < 2));
+      if (bad >= 0) return json({ error: `Frage ${bad + 1}: Bitte Fragetext und bei Auswahlfragen mindestens zwei Antworten eintragen.` }, 400);
+      if (s.forms.length >= 30) return json({ error: 'Es gibt schon zu viele Fragebögen. Lösch erst einen alten.' }, 400);
+      s.forms.unshift({ id: newId(), title, desc: String(body.desc || '').trim().slice(0, 500), by: me, at: Date.now(),
+        anonymous: !!body.anonymous, questions: qs, responses: {} });
+      await save();
+      await notify(`📝 ${acct.display || me} hat einen Fragebogen erstellt: ${title}`, null, '/');
+      return json({ ok: true, forms: s.forms.map(formView) });
+    }
+    const form = s.forms.find(x => x.id === body.id);
+    if (path.startsWith('/api/forms/') && !form) return json({ error: 'Diesen Fragebogen gibt es nicht mehr.' }, 404);
+    if (path === '/api/forms/answer') {
+      if (form.closed) return json({ error: 'Der Fragebogen ist schon beendet.' }, 400);
+      const a = body.answers || {};
+      const out = {};
+      for (const [i, q] of form.questions.entries()) {
+        let v = a[q.id];
+        if (q.type === 'short' || q.type === 'long' || q.type === 'date') {
+          v = String(v ?? '').trim().slice(0, q.type === 'long' ? 2000 : 200);
+          if (q.type === 'date' && v && !isDay(v)) v = '';
+        } else if (q.type === 'single' || q.type === 'dropdown' || q.type === 'yesno') {
+          const allowed = q.type === 'yesno' ? ['Ja', 'Nein'] : q.options;
+          v = String(v ?? '');
+          if (!allowed.includes(v)) v = q.other && v.startsWith('Sonstiges: ') ? v.slice(0, 200) : '';
+        } else if (q.type === 'multi') {
+          v = [...new Set((Array.isArray(v) ? v : []).map(String))]
+            .filter(x => q.options.includes(x) || (q.other && x.startsWith('Sonstiges: '))).map(x => x.slice(0, 200));
+        } else if (q.type === 'scale') {
+          v = Number(v);
+          if (!(Number.isInteger(v) && v >= 1 && v <= q.max)) v = null;
+        }
+        const empty = v === '' || v === null || (Array.isArray(v) && !v.length);
+        if (q.required && empty) return json({ error: `Bitte beantworte Frage ${i + 1}: „${q.text}“.` }, 400);
+        if (!empty) out[q.id] = v;
+      }
+      const first = !form.responses[me];
+      form.responses[me] = out;
+      await save();
+      if (first && form.by !== me) {
+        const n = Object.keys(form.responses).length;
+        await notify(`📝 ${acct.display || me} hat „${form.title}“ ausgefüllt (${n} von ${s.names.length}).`, [form.by], '/');
+      }
+      return json({ ok: true, forms: s.forms.map(formView) });
+    }
+    if (path === '/api/forms/close' || path === '/api/forms/delete') {
+      if (form.by !== me) return json({ error: 'Nur wer den Fragebogen erstellt hat, kann das.' }, 403);
+      if (path === '/api/forms/close') form.closed = Date.now();
+      else s.forms = s.forms.filter(x => x.id !== form.id);
+      await save();
+      return json({ ok: true, forms: s.forms.map(formView) });
     }
 
     // ---------- Umfragen ----------

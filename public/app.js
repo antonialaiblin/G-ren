@@ -67,7 +67,7 @@ function render() {
   $('settings').hidden = !inside;
   $('wichtel').hidden = !wichtelOn || revealing;
   $('polls-box').hidden = !inside || revealing;
-  if (inside) renderPolls();
+  if (inside) { renderPolls(); renderForms(); }
   document.body.classList.toggle('tabs', inside);
   const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
@@ -411,7 +411,281 @@ function renderPolls() {
     }
     box.appendChild(el);
   }
-  $('poll-empty').hidden = polls.length > 0;
+  $('poll-empty').hidden = polls.length > 0 || (state.forms || []).length > 0;
+}
+
+// ---------- Fragebögen ----------
+const QTYPES = [
+  ['short', '✏️ Kurze Antwort'], ['long', '📄 Absatz'], ['single', '🔘 Eine Auswahl'], ['multi', '☑️ Mehrfachauswahl'],
+  ['dropdown', '🔽 Dropdown'], ['scale', '⭐ Skala'], ['yesno', '👍 Ja / Nein'], ['date', '📅 Datum'],
+];
+const hasOpts = (t) => t === 'single' || t === 'multi' || t === 'dropdown';
+let fq = [];                    // Fragen im Baukasten
+const openForms = {};           // id -> 'fill' | 'results'
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+function newQ(type = 'single') { return { type, text: '', required: false, options: ['', ''], other: false, max: 5, low: '', high: '' }; }
+
+function renderBuilder() {
+  const box = $('fb-questions');
+  box.innerHTML = '';
+  fq.forEach((q, i) => {
+    const card = el('div', 'q-card');
+    const head = el('div', 'q-head');
+    head.append(el('b', null, `Frage ${i + 1}`));
+    const tools = el('div', 'q-tools');
+    const tool = (label, title, fn, off) => { const b = el('button', 'ghost tiny', label); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.disabled = !!off; b.onclick = fn; tools.append(b); };
+    tool('↑', 'Nach oben', () => { [fq[i - 1], fq[i]] = [fq[i], fq[i - 1]]; renderBuilder(); }, i === 0);
+    tool('↓', 'Nach unten', () => { [fq[i + 1], fq[i]] = [fq[i], fq[i + 1]]; renderBuilder(); }, i === fq.length - 1);
+    tool('⧉', 'Frage kopieren', () => { fq.splice(i + 1, 0, JSON.parse(JSON.stringify(q))); renderBuilder(); });
+    tool('🗑', 'Frage löschen', () => { fq.splice(i, 1); renderBuilder(); }, fq.length === 1);
+    head.append(tools);
+    card.append(head);
+
+    const text = el('input', 'q-text'); text.maxLength = 200; text.placeholder = 'Deine Frage'; text.value = q.text;
+    text.oninput = () => { q.text = text.value; };
+    card.append(text);
+
+    const sel = el('select', 'q-type');
+    for (const [v, label] of QTYPES) sel.add(new Option(label, v, false, v === q.type));
+    sel.onchange = () => { q.type = sel.value; if (hasOpts(q.type) && q.options.length < 2) q.options = ['', '']; renderBuilder(); };
+    card.append(sel);
+
+    if (hasOpts(q.type)) {
+      const list = el('div', 'q-opts');
+      q.options.forEach((o, k) => {
+        const row = el('div', 'q-opt');
+        row.append(el('span', 'q-mark', q.type === 'multi' ? '☐' : q.type === 'dropdown' ? `${k + 1}.` : '○'));
+        const inp = el('input'); inp.maxLength = 80; inp.placeholder = `Antwort ${k + 1}`; inp.value = o;
+        inp.oninput = () => { q.options[k] = inp.value; };
+        inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); q.options.push(''); renderBuilder(); focusLast(i); } };
+        row.append(inp);
+        if (q.options.length > 2) { const x = el('button', 'ghost tiny', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Antwort entfernen'); x.onclick = () => { q.options.splice(k, 1); renderBuilder(); }; row.append(x); }
+        list.append(row);
+      });
+      const add = el('button', 'link', '+ Antwort hinzufügen'); add.type = 'button';
+      add.onclick = () => { q.options.push(''); renderBuilder(); focusLast(i); };
+      list.append(add);
+      card.append(list);
+      if (q.type !== 'dropdown') card.append(checkRow('„Sonstiges“ mit eigenem Text erlauben', q.other, v => { q.other = v; }));
+    }
+    if (q.type === 'scale') {
+      const row = el('div', 'q-scale');
+      const max = el('select');
+      for (const n of [3, 5, 7, 10]) max.add(new Option(`1 bis ${n}`, n, false, n === q.max));
+      max.onchange = () => { q.max = Number(max.value); };
+      const low = el('input'); low.placeholder = 'Text bei 1 (optional)'; low.maxLength = 30; low.value = q.low; low.oninput = () => { q.low = low.value; };
+      const high = el('input'); high.placeholder = 'Text beim Höchsten (optional)'; high.maxLength = 30; high.value = q.high; high.oninput = () => { q.high = high.value; };
+      row.append(max, low, high);
+      card.append(row);
+    }
+    card.append(checkRow('Pflichtfrage', q.required, v => { q.required = v; }));
+    box.append(card);
+  });
+}
+function focusLast(i) { const c = $('fb-questions').children[i]; const ins = c && c.querySelectorAll('.q-opt input'); if (ins && ins.length) ins[ins.length - 1].focus(); }
+function checkRow(label, checked, onChange) {
+  const l = el('label', 'check-row');
+  const c = el('input'); c.type = 'checkbox'; c.checked = checked; c.onchange = () => onChange(c.checked);
+  l.append(c, document.createTextNode(' ' + label));
+  return l;
+}
+
+$('form-new').onclick = () => {
+  $('poll-form').hidden = true;
+  $('form-builder').hidden = false;
+  $('fb-title').value = ''; $('fb-desc').value = ''; $('fb-anon').checked = false;
+  fq = [newQ('single')];
+  err('fb-error', '');
+  renderBuilder();
+  setTimeout(() => $('fb-title').focus(), 50);
+};
+$('fb-add').onclick = () => { fq.push(newQ('short')); renderBuilder(); const cards = $('fb-questions').children; cards[cards.length - 1].querySelector('.q-text').focus(); };
+$('fb-cancel').onclick = () => { $('form-builder').hidden = true; };
+$('form-builder').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('fb-error', '');
+  const questions = fq.map(q => ({ ...q, options: hasOpts(q.type) ? q.options.map(o => o.trim()).filter(Boolean) : undefined }));
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const r = await api('/api/forms/add', { title: $('fb-title').value, desc: $('fb-desc').value, anonymous: $('fb-anon').checked, questions });
+    state.forms = r.forms;
+    $('form-builder').hidden = true;
+    renderForms(); renderPolls();
+  } catch (e2) { err('fb-error', e2.message); }
+  finally { if (btn) btn.disabled = false; }
+});
+
+function renderForms() {
+  const me = account.person;
+  const box = $('form-list');
+  box.innerHTML = '';
+  for (const f of state.forms || []) {
+    const card = el('div', 'poll form-item' + (f.closed ? ' closed' : ''));
+    const head = el('div', 'find-head');
+    head.append(el('b', 't', `📝 ${f.title}`), el('span', 'by muted small', ` von ${displayName(f.by)}${f.anonymous ? ' · anonym' : ''}`));
+    card.append(head);
+    if (f.desc) card.append(el('p', 'muted small pre', f.desc));
+    const missing = state.names.filter(n => !f.answered.includes(n));
+    card.append(el('p', 'muted small', `${f.questions.length} ${f.questions.length === 1 ? 'Frage' : 'Fragen'} · ${f.answered.length} von ${state.names.length} haben geantwortet`
+      + (missing.length && !f.closed ? ` · offen: ${missing.map(displayName).join(', ')}` : '') + (f.closed ? ' · beendet' : '')));
+
+    const acts = el('div', 'row acts');
+    const btn = (label, cls, fn) => { const b = el('button', cls, label); b.type = 'button'; b.onclick = fn; acts.append(b); return b; };
+    const mode = openForms[f.id];
+    if (!f.closed) btn(mode === 'fill' ? 'Schließen' : f.mine ? 'Antwort ändern' : 'Ausfüllen ✍️', mode === 'fill' ? 'ghost' : '', () => { openForms[f.id] = mode === 'fill' ? null : 'fill'; renderForms(); });
+    if (f.canSee) btn(mode === 'results' ? 'Ergebnisse zu' : '📊 Ergebnisse', 'ghost', () => { openForms[f.id] = mode === 'results' ? null : 'results'; renderForms(); });
+    if (f.by === me) {
+      if (!f.closed) btn('Beenden', 'ghost', async () => { try { const r = await api('/api/forms/close', { id: f.id }); state.forms = r.forms; renderForms(); } catch (e2) { alert(e2.message); } });
+      btn('Löschen', 'ghost', async () => {
+        if (!confirm(`Fragebogen „${f.title}“ mit allen Antworten löschen?`)) return;
+        try { const r = await api('/api/forms/delete', { id: f.id }); state.forms = r.forms; renderForms(); renderPolls(); } catch (e2) { alert(e2.message); }
+      });
+    }
+    if (!f.canSee && !f.closed) card.append(el('p', 'muted small', 'Die Ergebnisse siehst du, sobald du selbst geantwortet hast.'));
+    card.append(acts);
+    if (mode === 'fill' && !f.closed) card.append(fillView(f));
+    if (mode === 'results' && f.canSee) card.append(resultsView(f));
+    box.append(card);
+  }
+}
+
+function fillView(f) {
+  const form = el('form', 'fill');
+  form.noValidate = true;
+  const mine = f.mine || {};
+  const getters = {};
+  f.questions.forEach((q, i) => {
+    const wrap = el('fieldset', 'fq');
+    const lg = el('legend', null, `${i + 1}. ${q.text}`);
+    if (q.required) lg.append(el('span', 'req', ' *'));
+    wrap.append(lg);
+    const cur = mine[q.id];
+    const name = `${f.id}-${q.id}`;
+    if (q.type === 'short' || q.type === 'long' || q.type === 'date') {
+      const inp = el(q.type === 'long' ? 'textarea' : 'input', 'fq-input');
+      if (q.type === 'date') inp.type = 'date';
+      if (q.type === 'long') inp.rows = 3;
+      inp.maxLength = q.type === 'long' ? 2000 : 200;
+      inp.placeholder = q.type === 'date' ? '' : 'Deine Antwort';
+      inp.value = cur || '';
+      wrap.append(inp);
+      getters[q.id] = () => inp.value;
+    } else if (q.type === 'dropdown') {
+      const sel = el('select', 'fq-input');
+      sel.add(new Option('Bitte wählen …', ''));
+      for (const o of q.options) sel.add(new Option(o, o, false, o === cur));
+      wrap.append(sel);
+      getters[q.id] = () => sel.value;
+    } else if (q.type === 'single' || q.type === 'multi' || q.type === 'yesno') {
+      const opts = q.type === 'yesno' ? ['Ja', 'Nein'] : q.options;
+      const multi = q.type === 'multi';
+      const curArr = multi ? (cur || []) : [cur];
+      const otherCur = curArr.find(x => typeof x === 'string' && x.startsWith('Sonstiges: '));
+      const list = el('div', 'fq-opts' + (q.type === 'yesno' ? ' yn' : ''));
+      const inputs = [];
+      for (const o of opts) {
+        const l = el('label', 'fq-opt');
+        const c = el('input'); c.type = multi ? 'checkbox' : 'radio'; c.name = name; c.value = o; c.checked = curArr.includes(o);
+        l.append(c, el('span', null, o));
+        list.append(l); inputs.push(c);
+      }
+      let otherBox = null, otherText = null;
+      if (q.other) {
+        const l = el('label', 'fq-opt other');
+        otherBox = el('input'); otherBox.type = multi ? 'checkbox' : 'radio'; otherBox.name = name; otherBox.checked = !!otherCur;
+        otherText = el('input'); otherText.placeholder = 'Sonstiges …'; otherText.maxLength = 180; otherText.value = otherCur ? otherCur.slice(11) : '';
+        otherText.oninput = () => { if (otherText.value) otherBox.checked = true; };
+        l.append(otherBox, otherText);
+        list.append(l);
+      }
+      wrap.append(list);
+      getters[q.id] = () => {
+        const picked = inputs.filter(c => c.checked).map(c => c.value);
+        if (otherBox && otherBox.checked && otherText.value.trim()) picked.push(`Sonstiges: ${otherText.value.trim()}`);
+        return multi ? picked : (picked[0] || '');
+      };
+    } else if (q.type === 'scale') {
+      const row = el('div', 'fq-scale');
+      let val = cur || null;
+      const btns = [];
+      for (let n = 1; n <= q.max; n++) {
+        const b = el('button', 'scale-btn' + (n === val ? ' on' : ''), n); b.type = 'button';
+        b.onclick = () => { val = val === n ? null : n; btns.forEach((x, k) => x.classList.toggle('on', k + 1 === val)); };
+        btns.push(b); row.append(b);
+      }
+      wrap.append(row);
+      if (q.low || q.high) { const lab = el('div', 'fq-scale-lab small muted'); lab.append(el('span', null, q.low), el('span', null, q.high)); wrap.append(lab); }
+      getters[q.id] = () => val;
+    }
+    form.append(wrap);
+  });
+  const e = el('p', 'error'); e.hidden = true;
+  const row = el('div', 'row end');
+  const send = el('button', null, f.mine ? 'Antwort speichern' : 'Abschicken'); send.type = 'submit';
+  row.append(send);
+  form.append(e, row);
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    e.hidden = true;
+    const answers = {};
+    for (const [id, get] of Object.entries(getters)) answers[id] = get();
+    send.disabled = true;
+    try {
+      const r = await api('/api/forms/answer', { id: f.id, answers });
+      state.forms = r.forms;
+      openForms[f.id] = 'results';
+      renderForms();
+    } catch (e2) { e.textContent = e2.message; e.hidden = false; send.disabled = false; }
+  };
+  return form;
+}
+
+function resultsView(f) {
+  const box = el('div', 'results');
+  if (!f.responses.length) { box.append(el('p', 'muted small', 'Noch keine Antworten.')); return box; }
+  f.questions.forEach((q, i) => {
+    const sec = el('div', 'res-q');
+    sec.append(el('b', null, `${i + 1}. ${q.text}`));
+    const answers = f.responses.map(x => ({ who: x.who, v: x.r[q.id] })).filter(x => x.v !== undefined && x.v !== '' && x.v !== null);
+    sec.append(el('span', 'muted small', ` · ${answers.length} ${answers.length === 1 ? 'Antwort' : 'Antworten'}`));
+    if (['single', 'multi', 'dropdown', 'yesno', 'scale'].includes(q.type)) {
+      const labels = q.type === 'yesno' ? ['Ja', 'Nein'] : q.type === 'scale' ? Array.from({ length: q.max }, (_, k) => String(k + 1)) : [...q.options];
+      const counts = new Map(labels.map(l => [l, []]));
+      for (const a of answers) for (const v of (Array.isArray(a.v) ? a.v : [a.v])) {
+        const key = String(v);
+        if (!counts.has(key)) counts.set(key, []);
+        counts.get(key).push(a.who);
+      }
+      const maxN = Math.max(1, ...[...counts.values()].map(x => x.length));
+      const list = el('div', 'res-bars');
+      for (const [label, whos] of counts) {
+        const row = el('div', 'res-bar');
+        const bar = el('span', 'bar'); bar.style.width = `${whos.length / maxN * 100}%`;
+        row.append(bar, el('span', 'lbl', label), el('span', 'n', whos.length));
+        list.append(row);
+        if (whos.length && !f.anonymous) list.append(el('span', 'who small muted', whos.map(displayName).join(', ')));
+      }
+      sec.append(list);
+      if (q.type === 'scale' && answers.length) {
+        const avg = answers.reduce((s, a) => s + a.v, 0) / answers.length;
+        sec.append(el('p', 'small', `Durchschnitt: ${avg.toLocaleString('de-DE', { maximumFractionDigits: 1 })} von ${q.max}`
+          + (q.low || q.high ? ` (1 = ${q.low || '…'}, ${q.max} = ${q.high || '…'})` : '')));
+      }
+    } else {
+      const ul = el('ul', 'res-text');
+      for (const a of answers) {
+        const li = el('li');
+        if (!f.anonymous) li.append(el('b', null, `${displayName(a.who)}: `));
+        li.append(document.createTextNode(q.type === 'date' ? shortDay(a.v) + a.v.slice(0, 4) : a.v));
+        ul.append(li);
+      }
+      sec.append(ul);
+    }
+    box.append(sec);
+  });
+  return box;
 }
 
 function addOptInput(boxId, type, placeholder) {
@@ -434,6 +708,7 @@ function setPollMode(mode) {
 document.querySelectorAll('[data-poll-mode]').forEach(b => b.onclick = () => setPollMode(b.dataset.pollMode));
 
 $('poll-new').onclick = () => {
+  $('form-builder').hidden = true;
   $('poll-form').hidden = false;
   $('poll-q').value = '';
   $('poll-opts').innerHTML = '';
