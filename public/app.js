@@ -68,6 +68,8 @@ function render() {
   $('wichtel').hidden = !wichtelOn || revealing;
   $('polls-box').hidden = !inside || revealing;
   if (inside) { renderPolls(); renderForms(); }
+  $('bucket-box').hidden = !inside || revealing;
+  if (inside) renderBucket();
   document.body.classList.toggle('tabs', inside);
   const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
@@ -421,6 +423,97 @@ function renderPolls() {
   }
   $('poll-empty').hidden = polls.length > 0 || (state.forms || []).length > 0;
 }
+
+// ---------- Bucket List ----------
+let bucketCat = null;
+try { bucketCat = localStorage.getItem('goeren-bucket-cat'); } catch {}
+
+function renderBucket() {
+  const b = state.bucket;
+  if (!b) return;
+  if (!b.cats.some(c => c.id === bucketCat)) bucketCat = b.cats[0]?.id;
+  const cat = b.cats.find(c => c.id === bucketCat);
+  // Kategorien als Reiter
+  const tabs = $('bucket-cats');
+  tabs.innerHTML = '';
+  for (const c of b.cats) {
+    const n = b.items.filter(i => i.cat === c.id && !i.done).length;
+    const t = el('button', 'chip' + (c.id === bucketCat ? ' on' : ''), `${c.emoji} ${c.name}${n ? ` · ${n}` : ''}`);
+    t.type = 'button'; t.setAttribute('role', 'tab'); t.setAttribute('aria-selected', c.id === bucketCat);
+    t.onclick = () => { bucketCat = c.id; try { localStorage.setItem('goeren-bucket-cat', c.id); } catch {} renderBucket(); };
+    tabs.append(t);
+  }
+  const plus = el('button', 'chip ghost-chip', '+ Kategorie'); plus.type = 'button';
+  plus.onclick = () => { $('bucket-cat-form').hidden = !$('bucket-cat-form').hidden; if (!$('bucket-cat-form').hidden) $('bucket-cat-name').focus(); };
+  tabs.append(plus);
+
+  // Für wen? (nur bei Geschenken)
+  const forSel = $('bucket-for');
+  forSel.hidden = !cat?.gifts;
+  $('bucket-gift-note').hidden = !cat?.gifts;
+  if (cat?.gifts && forSel.options.length !== state.names.length) {
+    const keep = forSel.value;
+    forSel.innerHTML = '';
+    forSel.add(new Option('für …', ''));
+    for (const n of state.names) if (n !== account.person) forSel.add(new Option(`für ${displayName(n)}`, n));
+    forSel.value = keep;
+  }
+  $('bucket-text').placeholder = cat?.gifts ? 'Geschenkidee …' : cat?.id === 'urlaub' ? 'z. B. Roadtrip nach Kopenhagen' : cat?.id === 'berlin' ? 'z. B. Tempelhofer Feld Picknick' : 'Was wollt ihr machen?';
+
+  const items = b.items.filter(i => i.cat === bucketCat);
+  const open = items.filter(i => !i.done).sort((x, y) => y.likes.length - x.likes.length || x.at - y.at);
+  const done = items.filter(i => i.done).sort((x, y) => y.done.at - x.done.at);
+  const draw = (ul, list) => {
+    ul.innerHTML = '';
+    for (const i of list) {
+      const li = el('li', i.done ? 'done' : '');
+      const check = el('button', 'b-check', i.done ? '✓' : ''); check.type = 'button';
+      check.setAttribute('aria-label', i.done ? 'Wieder offen' : 'Erledigt');
+      check.onclick = () => bucketCall('/api/bucket/done', { id: i.id });
+      const txt = el('div', 'b-txt');
+      txt.append(el('span', 'b-t', i.text));
+      const meta = [i.for ? `für ${displayName(i.for)}` : '', `von ${displayName(i.by)}`, i.done ? `erledigt ${new Date(i.done.at).toLocaleDateString('de-DE')}` : ''].filter(Boolean).join(' · ');
+      txt.append(el('span', 'b-meta small muted', meta));
+      const like = el('button', 'b-like' + (i.likes.includes(account.person) ? ' on' : ''), `♥ ${i.likes.length}`); like.type = 'button';
+      like.title = i.likes.map(displayName).join(', ') || 'Will ich auch!';
+      like.setAttribute('aria-label', `Will ich auch (${i.likes.length})`);
+      like.onclick = () => bucketCall('/api/bucket/like', { id: i.id });
+      li.append(check, txt, like);
+      if (i.by === account.person) {
+        const del = el('button', 'b-del', '✕'); del.type = 'button'; del.setAttribute('aria-label', 'Löschen');
+        del.onclick = () => { if (confirm(`„${i.text}“ löschen?`)) bucketCall('/api/bucket/delete', { id: i.id }); };
+        li.append(del);
+      }
+      ul.append(li);
+    }
+  };
+  draw($('bucket-list'), open);
+  draw($('bucket-done'), done);
+  $('bucket-empty').textContent = open.length ? '' : (done.length ? 'Alles erledigt! 🎉 Was kommt als Nächstes?' : 'Noch nichts eingetragen. Schreib oben die erste Idee rein!');
+  $('bucket-empty').hidden = !!open.length;
+  $('bucket-done-box').hidden = !done.length;
+  $('bucket-done-sum').textContent = `✓ Schon gemacht (${done.length})`;
+}
+
+async function bucketCall(path, body) {
+  err('bucket-error', '');
+  try { const r = await api(path, body); state.bucket = r.bucket; renderBucket(); return true; }
+  catch (e2) { err('bucket-error', e2.message); return false; }
+}
+$('bucket-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('bucket-text').value.trim();
+  if (!text) { $('bucket-text').focus(); return; }
+  if (await bucketCall('/api/bucket/add', { cat: bucketCat, text, for: $('bucket-for').value || null })) { $('bucket-text').value = ''; $('bucket-for').value = ''; }
+});
+$('bucket-cat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (await bucketCall('/api/bucket/cat', { name: $('bucket-cat-name').value, emoji: $('bucket-cat-emoji').value })) {
+    const cats = state.bucket.cats; bucketCat = cats[cats.length - 1].id;
+    $('bucket-cat-name').value = ''; $('bucket-cat-emoji').value = ''; $('bucket-cat-form').hidden = true;
+    renderBucket();
+  }
+});
 
 // ---------- Fragebögen ----------
 const QTYPES = [

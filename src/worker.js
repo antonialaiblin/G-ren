@@ -38,6 +38,19 @@ export class Wichtel extends DurableObject {
     s.polls ||= [];
     s.chats ||= [];
     s.forms ||= [];
+    // Bucket List: Kategorien und Einträge
+    s.bucket ||= {
+      cats: [
+        { id: 'urlaub', name: 'Urlaub', emoji: '🏖️' },
+        { id: 'berlin', name: 'Unternehmungen in Berlin', emoji: '🏙️' },
+        { id: 'geschenke', name: 'Geburtstagsgeschenke', emoji: '🎁', gifts: true },
+      ],
+      // Erste Ideen von Toni (sieht die jeweilige Person nicht)
+      items: [
+        { id: newId(), cat: 'geschenke', text: 'Kart fahren 🏎️', for: 'Leo', by: ADMIN, at: Date.now(), likes: [ADMIN], done: null },
+        { id: newId(), cat: 'geschenke', text: 'Escape Room 🔐', for: 'Lilly', by: ADMIN, at: Date.now(), likes: [ADMIN], done: null },
+      ],
+    };
     s.stammtisch ||= { day: 4, done: {} };   // Wochentag 1=Mo … 7=So (0 = aus); done: was für welche Woche schon passiert ist
     s.imgs ||= {};    // hochgeladene Bilder (Umfragen, Fragebögen): id -> { by, at }; das Bild selbst liegt unter img:<id>   // Fragebögen (wie Google Forms)
     // Der große Gören-Chat mit allen
@@ -174,6 +187,8 @@ export class Wichtel extends DurableObject {
         account: accountInfo(acct),
         events: me ? s.events : [],
         polls: me ? s.polls : [],
+        // Geschenkideen für eine Person sieht diese Person nicht
+        bucket: me ? { cats: s.bucket.cats, items: s.bucket.items.filter(i => i.for !== me) } : null,
         forms: me ? s.forms.map(formView) : [],
         finds: me ? s.finds : [],
         people: me ? people() : {},
@@ -506,6 +521,42 @@ export class Wichtel extends DurableObject {
       s.events = s.events.filter(e => e.id !== body.id);
       await save();
       return json({ ok: true, events: s.events });
+    }
+
+    // ---------- Bucket List ----------
+    const bucketView = () => ({ cats: s.bucket.cats, items: s.bucket.items.filter(i => i.for !== me) });
+    if (path === '/api/bucket/add') {
+      const cat = s.bucket.cats.find(c => c.id === body.cat);
+      if (!cat) return json({ error: 'Diese Kategorie gibt es nicht.' }, 404);
+      const text = String(body.text || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+      if (!text) return json({ error: 'Schreib kurz, was ihr machen wollt.' }, 400);
+      if (s.bucket.items.length >= 500) return json({ error: 'Die Bucket List ist voll.' }, 400);
+      const forWho = cat.gifts && s.names.includes(body.for) && body.for !== me ? body.for : null;
+      s.bucket.items.push({ id: newId(), cat: cat.id, text, by: me, at: Date.now(), likes: [me], done: null, ...(forWho ? { for: forWho } : {}) });
+      await save();
+      return json({ ok: true, bucket: bucketView() });
+    }
+    if (path === '/api/bucket/cat') {
+      const name = String(body.name || '').trim().slice(0, 40);
+      const emoji = String(body.emoji || '').trim().slice(0, 8) || '⭐';
+      if (!name) return json({ error: 'Bitte gib der Kategorie einen Namen.' }, 400);
+      if (s.bucket.cats.length >= 12) return json({ error: 'Es gibt schon genug Kategorien.' }, 400);
+      if (s.bucket.cats.some(c => c.name.toLowerCase() === name.toLowerCase())) return json({ error: 'Diese Kategorie gibt es schon.' }, 400);
+      s.bucket.cats.push({ id: newId(), name, emoji, by: me });
+      await save();
+      return json({ ok: true, bucket: bucketView() });
+    }
+    if (path.startsWith('/api/bucket/')) {
+      const item = s.bucket.items.find(i => i.id === body.id && i.for !== me);
+      if (!item) return json({ error: 'Diesen Eintrag gibt es nicht mehr.' }, 404);
+      if (path === '/api/bucket/done') item.done = item.done ? null : { by: me, at: Date.now() };
+      else if (path === '/api/bucket/like') item.likes = item.likes.includes(me) ? item.likes.filter(x => x !== me) : [...item.likes, me];
+      else if (path === '/api/bucket/delete') {
+        if (item.by !== me) return json({ error: 'Nur wer es eingetragen hat, kann es löschen.' }, 403);
+        s.bucket.items = s.bucket.items.filter(i => i !== item);
+      } else return json({ error: 'Nicht gefunden.' }, 404);
+      await save();
+      return json({ ok: true, bucket: bucketView() });
     }
 
     // ---------- Stammtisch-Tag einstellen (gilt für alle) ----------
