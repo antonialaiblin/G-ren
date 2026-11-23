@@ -208,6 +208,29 @@
 
     <p class="foot small muted" id="foot" hidden>Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
 
+    <!-- Bucket List (ganz unten auf der Übersicht) -->
+    <section id="bucket-box" class="card" hidden>
+      <h2>🪣 Unsere Bucket List</h2>
+      <p class="muted small">Was wir noch alles zusammen machen wollen.</p>
+      <div class="bucket-cats" id="bucket-cats" role="tablist"></div>
+      <form class="bucket-add" id="bucket-form" autocomplete="off">
+        <input id="bucket-text" maxlength="140" placeholder="Was wollt ihr machen?">
+        <select id="bucket-for" hidden></select>
+        <button type="submit" aria-label="Eintragen">+</button>
+      </form>
+      <p class="muted small" id="bucket-gift-note" hidden>Geschenkideen für jemanden sieht diese Person nicht.</p>
+      <ul class="bucket-list" id="bucket-list"></ul>
+      <p class="muted small" id="bucket-empty"></p>
+      <details class="bucket-done" id="bucket-done-box" hidden><summary id="bucket-done-sum"></summary><ul class="bucket-list" id="bucket-done"></ul></details>
+      <form class="bucket-newcat" id="bucket-cat-form" hidden autocomplete="off">
+        <input id="bucket-cat-emoji" maxlength="8" placeholder="🎨" aria-label="Emoji">
+        <input id="bucket-cat-name" maxlength="40" placeholder="Name der Kategorie">
+        <button type="submit">Anlegen</button>
+      </form>
+      <p class="error" id="bucket-error" hidden></p>
+    </section>
+
+
     </div>
 
     <!-- ===== Seite: Kalender ===== -->
