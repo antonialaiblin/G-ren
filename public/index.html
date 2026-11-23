@@ -216,13 +216,6 @@
       <div class="center"><button type="button" class="ghost" id="close-reveal">Brief schließen</button></div>
     </section>
 
-    <!-- Nur für die Admin: Accounts verwalten -->
-    <section class="card" id="admin-box" hidden>
-      <h2>🔑 Accounts verwalten</h2>
-      <p class="muted small">Hier kannst du ein neues Passwort setzen, wenn eine es vergessen hat. Sag es ihr danach, sie kann sich dann direkt damit anmelden.</p>
-      <ul class="acct-list" id="acct-list"></ul>
-      <p class="error" id="admin-error" hidden></p>
-    </section>
 
     <p class="foot small muted" id="foot" hidden>Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
 
@@ -232,6 +225,15 @@
       <h2 class="lettering">Bucket List</h2>
       <p class="note-sub">Was wir noch alles zusammen machen wollen ♡</p>
       <div class="bucket-cats" id="bucket-cats" role="tablist"></div>
+      <form class="bucket-newcat" id="bucket-cat-form" hidden autocomplete="off">
+        <input id="bucket-cat-emoji" maxlength="8" placeholder="🎨" aria-label="Emoji">
+        <input id="bucket-cat-name" maxlength="40" placeholder="Name der Kategorie">
+        <button type="submit" id="bucket-cat-save">Anlegen</button>
+        <div class="bucket-cat-edit" id="bucket-cat-edit" hidden>
+          <button type="button" class="link" id="bucket-cat-del">Kategorie löschen</button>
+          <button type="button" class="link" id="bucket-cat-cancel">Abbrechen</button>
+        </div>
+      </form>
       <form class="bucket-add" id="bucket-form" autocomplete="off">
         <input id="bucket-text" maxlength="140" placeholder="Was wollt ihr machen?">
         <select id="bucket-for" hidden></select>
@@ -241,11 +243,6 @@
       <ul class="bucket-list" id="bucket-list"></ul>
       <p class="muted small" id="bucket-empty"></p>
       <details class="bucket-done" id="bucket-done-box" hidden><summary id="bucket-done-sum"></summary><ul class="bucket-list" id="bucket-done"></ul></details>
-      <form class="bucket-newcat" id="bucket-cat-form" hidden autocomplete="off">
-        <input id="bucket-cat-emoji" maxlength="8" placeholder="🎨" aria-label="Emoji">
-        <input id="bucket-cat-name" maxlength="40" placeholder="Name der Kategorie">
-        <button type="submit">Anlegen</button>
-      </form>
       <p class="error" id="bucket-error" hidden></p>
     </section>
 
@@ -378,6 +375,14 @@
       </div>
 
       <div class="row end"><button type="button" class="ghost" data-logout>Abmelden</button></div>
+    </section>
+
+    <!-- Nur für die Admin: Accounts verwalten -->
+    <section class="card" id="admin-box" hidden>
+      <h2>🔑 Accounts verwalten</h2>
+      <p class="muted small">Hier kannst du ein neues Passwort setzen, wenn eine es vergessen hat. Sag es ihr danach, sie kann sich dann direkt damit anmelden.</p>
+      <ul class="acct-list" id="acct-list"></ul>
+      <p class="error" id="admin-error" hidden></p>
     </section>
     </div>
 
