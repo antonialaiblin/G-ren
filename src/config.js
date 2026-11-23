@@ -26,3 +26,9 @@ export const RESET = {};
 
 // Friendsmas: steht automatisch im Kalender. Am Tag danach verschwindet der Wichtel-Brief von der Übersicht.
 export const FRIENDSMAS = '2026-12-12';
+
+// Termine, die einmalig automatisch in den Kalender kommen (eingetragen von der Admin).
+// Danach kann man sie in der App wie jeden Termin löschen; hier stehen lassen schadet nicht.
+export const FESTE_TERMINE = [
+  { day: '2026-11-25', title: 'Stammtisch 🍻' },
+];
