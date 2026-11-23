@@ -570,3 +570,7 @@ li.done .b-t { text-decoration: line-through; color: var(--muted); }
 .note .error { font-family: system-ui, sans-serif; }
 
 .note .b-like { background: transparent !important; }
+
+/* „Wer hat schon nachgeschaut?“ im Wichtel-Brief */
+.w-status { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.w-status h3 { margin: 0; font-size: 15px; }

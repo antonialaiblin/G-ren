@@ -108,6 +108,11 @@
       </button>
       <p class="muted small center" id="ready-hint"></p>
       <p class="error" id="ready-error" hidden></p>
+      <div class="w-status" id="status">
+        <h3>Wer hat schon nachgeschaut?</h3>
+        <div class="progress"><span id="bar"></span></div>
+        <p class="muted small" id="status-line"></p>
+      </div>
     </section>
 
     <!-- Umfragen -->
@@ -193,12 +198,6 @@
       </form>
 
       <div class="center"><button type="button" class="ghost" id="close-reveal">Brief schließen</button></div>
-    </section>
-
-    <section class="card" id="status" hidden>
-      <h2>Wer hat schon nachgeschaut?</h2>
-      <div class="progress"><span id="bar"></span></div>
-      <p class="muted small" id="status-line"></p>
     </section>
 
     <!-- Nur für die Admin: Accounts verwalten -->
