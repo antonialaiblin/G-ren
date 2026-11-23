@@ -95,6 +95,8 @@
       <p class="next-ev" id="find-hint" hidden></p>
     </section>
 
+    <!-- Elemente der Übersicht: jede kann sie ein- und ausblenden und die Reihenfolge ändern (siehe WIDGETS in app.js) -->
+    <div id="home-widgets">
     <!-- Wichteln: Brief im Weihnachtsstil -->
     <section id="wichtel" class="card xmas" hidden>
       <h2>🎄 Wichteln</h2>
@@ -113,6 +115,7 @@
         <div class="progress"><span id="bar"></span></div>
         <p class="muted small" id="status-line"></p>
       </div>
+      <p class="foot small muted" id="foot" hidden>Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
     </section>
 
     <!-- Stammtisch-Abstimmung als Tisch (nur solange sie offen ist) -->
@@ -171,6 +174,52 @@
       <p class="muted small" id="poll-empty">Noch keine Umfragen. Frag doch mal was!</p>
     </section>
 
+    <!-- Bucket List (ganz unten auf der Übersicht) -->
+    <section id="bucket-box" class="note" hidden>
+      <span class="pin" aria-hidden="true"></span>
+      <h2 class="lettering">Bucket List</h2>
+      <p class="note-sub">Was wir noch alles zusammen machen wollen ♡</p>
+      <div class="bucket-cats" id="bucket-cats" role="tablist"></div>
+      <form class="bucket-newcat" id="bucket-cat-form" hidden autocomplete="off">
+        <input id="bucket-cat-emoji" maxlength="8" placeholder="🎨" aria-label="Emoji">
+        <input id="bucket-cat-name" maxlength="40" placeholder="Name der Kategorie">
+        <button type="submit" id="bucket-cat-save">Anlegen</button>
+        <div class="bucket-cat-edit" id="bucket-cat-edit" hidden>
+          <button type="button" class="link" id="bucket-cat-del">Kategorie löschen</button>
+          <button type="button" class="link" id="bucket-cat-cancel">Abbrechen</button>
+        </div>
+      </form>
+      <form class="bucket-add" id="bucket-form" autocomplete="off">
+        <input id="bucket-text" maxlength="140" placeholder="Was wollt ihr machen?">
+        <select id="bucket-for" hidden></select>
+        <button type="submit" aria-label="Eintragen">+</button>
+      </form>
+      <p class="muted small" id="bucket-gift-note" hidden>Geschenkideen für jemanden sieht diese Person nicht.</p>
+      <ul class="bucket-list" id="bucket-list"></ul>
+      <p class="muted small" id="bucket-empty"></p>
+      <details class="bucket-done" id="bucket-done-box" hidden><summary id="bucket-done-sum"></summary><ul class="bucket-list" id="bucket-done"></ul></details>
+      <p class="error" id="bucket-error" hidden></p>
+    </section>
+
+    <!-- Nächste Termine (kann man sich auf die Übersicht holen) -->
+    <section id="next-box" class="card" hidden>
+      <h2>📅 Nächste Termine</h2>
+      <ul class="next-list" id="next-list"></ul>
+      <p class="muted small" id="next-empty" hidden>Gerade steht nichts an.</p>
+    </section>
+    </div>
+
+    <!-- Übersicht anpassen -->
+    <div class="center home-edit-wrap" id="home-edit-wrap" hidden>
+      <button type="button" class="ghost small-btn" id="home-edit-btn">✏️ Übersicht anpassen</button>
+    </div>
+    <section class="card" id="home-edit" hidden>
+      <h2>✏️ Meine Übersicht</h2>
+      <p class="muted small">Hak an, was du auf deiner Übersicht sehen willst, und schieb es mit den Pfeilen nach oben oder unten. Das gilt nur für dich.</p>
+      <ul class="home-edit-list" id="home-edit-list"></ul>
+      <div class="row end"><button type="button" class="ghost" id="home-edit-reset">Zurücksetzen</button><button type="button" id="home-edit-done">Fertig</button></div>
+    </section>
+
     <!-- Brief -->
     <section id="reveal" hidden>
       <div class="stage">
@@ -217,34 +266,7 @@
     </section>
 
 
-    <p class="foot small muted" id="foot" hidden>Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
 
-    <!-- Bucket List (ganz unten auf der Übersicht) -->
-    <section id="bucket-box" class="note" hidden>
-      <span class="pin" aria-hidden="true"></span>
-      <h2 class="lettering">Bucket List</h2>
-      <p class="note-sub">Was wir noch alles zusammen machen wollen ♡</p>
-      <div class="bucket-cats" id="bucket-cats" role="tablist"></div>
-      <form class="bucket-newcat" id="bucket-cat-form" hidden autocomplete="off">
-        <input id="bucket-cat-emoji" maxlength="8" placeholder="🎨" aria-label="Emoji">
-        <input id="bucket-cat-name" maxlength="40" placeholder="Name der Kategorie">
-        <button type="submit" id="bucket-cat-save">Anlegen</button>
-        <div class="bucket-cat-edit" id="bucket-cat-edit" hidden>
-          <button type="button" class="link" id="bucket-cat-del">Kategorie löschen</button>
-          <button type="button" class="link" id="bucket-cat-cancel">Abbrechen</button>
-        </div>
-      </form>
-      <form class="bucket-add" id="bucket-form" autocomplete="off">
-        <input id="bucket-text" maxlength="140" placeholder="Was wollt ihr machen?">
-        <select id="bucket-for" hidden></select>
-        <button type="submit" aria-label="Eintragen">+</button>
-      </form>
-      <p class="muted small" id="bucket-gift-note" hidden>Geschenkideen für jemanden sieht diese Person nicht.</p>
-      <ul class="bucket-list" id="bucket-list"></ul>
-      <p class="muted small" id="bucket-empty"></p>
-      <details class="bucket-done" id="bucket-done-box" hidden><summary id="bucket-done-sum"></summary><ul class="bucket-list" id="bucket-done"></ul></details>
-      <p class="error" id="bucket-error" hidden></p>
-    </section>
 
 
     </div>
