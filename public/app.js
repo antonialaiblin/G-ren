@@ -73,6 +73,8 @@ function render() {
   if (inside) { renderPolls(); renderForms(); }
   $('bucket-box').hidden = !inside || revealing;
   if (inside) renderBucket();
+  if (inside) applyHome(revealing);
+  else { $('home-edit-wrap').hidden = true; $('home-edit').hidden = true; $('next-box').hidden = true; }
   document.body.classList.toggle('tabs', inside);
   const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
@@ -344,6 +346,81 @@ function renderTisch(f) {
   $('tisch-send').onclick = () => send([...picks]);
   $('tisch-no').onclick = () => send([]);
 }
+
+// ---------- Eigene Übersicht ----------
+// Neue Elemente für die Übersicht hier eintragen: id (kurz, ohne Leerzeichen), Element-id im HTML, Name.
+// off: true = ist am Anfang ausgeblendet und man kann es sich dazuholen.
+// fixed: kommt nur, wenn es gerade etwas zu zeigen gibt (z. B. Wichteln bis Friendsmas).
+const WIDGETS = [
+  { id: 'wichtel', el: 'wichtel', name: '🎄 Wichtel-Brief', note: 'bis Friendsmas' },
+  { id: 'tisch', el: 'tisch-box', name: '🍻 Stammtisch-Tisch', note: 'wenn abgestimmt wird' },
+  { id: 'termine', el: 'next-box', name: '📅 Nächste Termine', off: true },
+  { id: 'polls', el: 'polls-box', name: '📊 Umfragen' },
+  { id: 'bucket', el: 'bucket-box', name: '📝 Bucket List' },
+];
+function homeLayout() {
+  const h = account?.home?.order?.length ? account.home : {};
+  const known = WIDGETS.map(w => w.id);
+  const order = (h.order || []).filter(id => known.includes(id));
+  for (const id of known) if (!order.includes(id)) order.push(id);   // neue Elemente landen unten
+  const hidden = new Set(h.order ? (h.hidden || []) : WIDGETS.filter(w => w.off).map(w => w.id));
+  // Elemente, die es beim Speichern noch nicht gab, starten so wie vorgesehen
+  if (h.order) for (const w of WIDGETS) if (w.off && !h.order.includes(w.id)) hidden.add(w.id);
+  return { order, hidden };
+}
+function applyHome(revealing) {
+  const { order, hidden } = homeLayout();
+  const box = $('home-widgets');
+  for (const id of order) {
+    const w = WIDGETS.find(x => x.id === id);
+    const node = $(w.el);
+    box.append(node);
+    if (hidden.has(id)) node.hidden = true;
+  }
+  if (!hidden.has('termine')) renderNextBox();
+  $('next-box').hidden = hidden.has('termine') || revealing;
+  $('home-edit-wrap').hidden = revealing || !$('home-edit').hidden;
+  if (!$('home-edit').hidden) renderHomeEdit();
+}
+function renderNextBox() {
+  const today = isoDay(new Date());
+  const list = allEvents().filter(e => (e.end || e.day) >= today).slice(0, 5);
+  const ul = $('next-list'); ul.innerHTML = '';
+  for (const e of list) {
+    const [y, m, d] = e.day.split('-').map(Number);
+    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(y, m - 1, d).getDay()];
+    const li = el('li', e.bday ? 'bday' : '');
+    li.append(el('span', 'n-date', `${wd} ${d}.${m}.`), el('span', 'n-t', e.title));
+    ul.append(li);
+  }
+  $('next-empty').hidden = list.length > 0;
+}
+async function saveHome(order, hidden) {
+  const r = await api('/api/me/home', { order, hidden: [...hidden] });
+  account = r.account; state.account = r.account;
+  render();
+}
+function renderHomeEdit() {
+  const { order, hidden } = homeLayout();
+  const ul = $('home-edit-list'); ul.innerHTML = '';
+  order.forEach((id, k) => {
+    const w = WIDGETS.find(x => x.id === id);
+    const li = el('li', hidden.has(id) ? 'off' : '');
+    const lab = el('label', 'he-name');
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = !hidden.has(id);
+    cb.onchange = () => { cb.checked ? hidden.delete(id) : hidden.add(id); saveHome(order, hidden); };
+    lab.append(cb, el('span', '', w.name), ...(w.note ? [el('small', 'muted', ` (${w.note})`)] : []));
+    const up = el('button', 'he-move', '↑'); up.type = 'button'; up.disabled = k === 0; up.setAttribute('aria-label', 'nach oben');
+    const down = el('button', 'he-move', '↓'); down.type = 'button'; down.disabled = k === order.length - 1; down.setAttribute('aria-label', 'nach unten');
+    const move = (dir) => { const o = [...order]; [o[k], o[k + dir]] = [o[k + dir], o[k]]; saveHome(o, hidden); };
+    up.onclick = () => move(-1); down.onclick = () => move(1);
+    li.append(lab, up, down);
+    ul.append(li);
+  });
+}
+$('home-edit-btn').onclick = () => { $('home-edit').hidden = false; render(); $('home-edit').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+$('home-edit-done').onclick = () => { $('home-edit').hidden = true; render(); };
+$('home-edit-reset').onclick = () => { account.home = null; api('/api/me/home', { order: [], hidden: [] }).then(() => { account.home = null; render(); }); };
 
 const draftPicks = {};   // noch nicht abgeschickte Kreuzchen, pro Abstimmung
 

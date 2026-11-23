@@ -142,6 +142,7 @@ export class Wichtel extends DurableObject {
       username: a.username,
       person: a.person && s.names.includes(a.person) ? a.person : null,
       display: a.display || null,   // selbst gewählter Name für „Hallo …“
+      home: a.home || null,         // eigene Übersicht: { order: [...], hidden: [...] }
     } : null;
     // Benachrichtigung an alle anderen schicken, die sie angeschaltet haben
     // onlyFor: nur an diese Personen (z. B. die Mitglieder eines Chats)
@@ -386,6 +387,13 @@ export class Wichtel extends DurableObject {
     if (!me) return json({ error: 'Bitte wähl zuerst aus, wer du bist.' }, 403);
 
     // ---------- Profil: Geburtstag ----------
+    // Eigene Übersicht: Reihenfolge und ausgeblendete Elemente
+    if (path === '/api/me/home') {
+      const clean = (x) => (Array.isArray(x) ? x : []).map(String).filter(v => /^[a-z0-9-]{1,30}$/.test(v)).slice(0, 30);
+      acct.home = { order: clean(body.order), hidden: clean(body.hidden) };
+      await save();
+      return json({ ok: true, account: accountInfo(acct) });
+    }
     if (path === '/api/me/profile') {
       const md = String(body.birthday || '');
       const m = /^(\d{2})-(\d{2})$/.exec(md);
