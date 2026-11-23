@@ -66,6 +66,9 @@ function render() {
   $('tabbar').hidden = !inside;
   $('settings').hidden = !inside;
   $('wichtel').hidden = !wichtelOn || revealing;
+  const openSt = inside && (state.finds || []).find(f => f.kind === 'stammtisch' && !f.done);
+  $('tisch-box').hidden = !openSt || revealing;
+  if (openSt) renderTisch(openSt);
   $('polls-box').hidden = !inside || revealing;
   if (inside) { renderPolls(); renderForms(); }
   $('bucket-box').hidden = !inside || revealing;
@@ -284,6 +287,64 @@ const rangeText = (o) => {
 };
 
 // ---------- „Wann könnt ihr?“ ----------
+// ---------- Stammtisch-Tisch auf der Übersicht ----------
+function renderTisch(f) {
+  const me = account.person;
+  const picks = new Set(draftPicks[f.id] || f.answers[me] || []);
+  const votes = f.options.map((_, i) => state.names.filter(n => (f.answers[n] || []).includes(i)));
+  const best = Math.max(0, ...votes.map(v => v.length));
+  const [, mm, dd] = f.week.split('-').map(Number);
+  $('tisch-sub').textContent = `Wann nächste Woche (ab Mo ${dd}.${mm}.) und wer ist dabei? Tipp auf die Bierdeckel, an denen du kannst.`;
+  // Stühle: wer schon abgestimmt hat, sitzt am Tisch
+  const names = state.names;
+  const half = Math.ceil(names.length / 2);
+  for (const [id, list] of [['tisch-chairs-top', names.slice(0, half)], ['tisch-chairs-bottom', names.slice(half)]]) {
+    const row = $(id); row.innerHTML = '';
+    for (const n of list) {
+      const ans = f.answers[n];
+      const c = el('div', 'chair' + (ans ? (ans.length ? ' in' : ' out') : ' wait'));
+      const av = el('span', 'avatar'); setAvatar(av, n);
+      c.append(av, el('span', 'chair-name', displayName(n) + (ans ? (ans.length ? ' 🍺' : ' ✗') : ' …')));
+      c.title = ans ? (ans.length ? 'hat abgestimmt' : 'kann nicht') : 'hat noch nicht abgestimmt';
+      row.append(c);
+    }
+  }
+  // Bierdeckel: ein Deckel pro Tag
+  const box = $('tisch-coasters'); box.innerHTML = '';
+  f.options.forEach((o, i) => {
+    const [y, m, d] = o.day.split('-').map(Number);
+    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(y, m - 1, d).getDay()];
+    const b = el('button', 'coaster' + (picks.has(i) ? ' mine' : '') + (best >= 2 && votes[i].length === best ? ' lead' : ''));
+    b.type = 'button';
+    b.setAttribute('aria-pressed', picks.has(i) ? 'true' : 'false');
+    b.append(el('span', 'c-wd', wd), el('span', 'c-date', `${d}.${m}.`),
+      el('span', 'c-mugs', votes[i].length ? '🍺'.repeat(votes[i].length) : '·'));
+    b.title = votes[i].length ? votes[i].map(displayName).join(', ') : 'noch niemand';
+    b.onclick = () => {
+      picks.has(i) ? picks.delete(i) : picks.add(i);
+      draftPicks[f.id] = [...picks];
+      renderTisch(f);
+    };
+    box.append(b);
+  });
+  const missing = names.filter(n => !f.answers[n]);
+  const lead = best >= 2 ? f.options[votes.findIndex(v => v.length === best)] : null;
+  $('tisch-status').textContent = [lead ? `⭐ Gerade vorne: ${rangeText(lead).replace(/\.$/, '')}` : '', missing.length ? `Fehlt noch: ${missing.map(displayName).join(', ')}` : ''].filter(Boolean).join('\n');
+  const dirty = !!draftPicks[f.id];
+  $('tisch-send').textContent = f.answers[me] && !dirty ? 'Abgestimmt ✓' : 'Bin dabei 🍺';
+  $('tisch-send').disabled = !picks.size || (!!f.answers[me] && !dirty);
+  const send = async (list) => {
+    try {
+      const r = await api('/api/finds/answer', { id: f.id, picks: list });
+      delete draftPicks[f.id];
+      state.finds = r.finds; state.events = r.events;
+      renderCal(); render();
+    } catch (e) { alert(e.message); }
+  };
+  $('tisch-send').onclick = () => send([...picks]);
+  $('tisch-no').onclick = () => send([]);
+}
+
 const draftPicks = {};   // noch nicht abgeschickte Kreuzchen, pro Abstimmung
 
 function renderFinds() {
