@@ -31,4 +31,5 @@ export const FRIENDSMAS = '2026-12-12';
 // Danach kann man sie in der App wie jeden Termin löschen; hier stehen lassen schadet nicht.
 export const FESTE_TERMINE = [
   { day: '2026-11-25', title: 'Stammtisch 🍻' },
+  { day: '2026-11-13', end: '2026-11-15', title: 'Polen 🇵🇱' },
 ];

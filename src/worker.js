@@ -60,7 +60,7 @@ export class Wichtel extends DurableObject {
       const key = `${t.day}|${t.title}`;
       if (s.seeded[key] || !/^\d{4}-\d{2}-\d{2}$/.test(t.day)) continue;
       if (!s.events.some(e => e.day === t.day && e.title === t.title)) {
-        s.events.push({ id: `fest-${t.day}-${Math.random().toString(36).slice(2, 6)}`, day: t.day, title: t.title, by: ADMIN, at: Date.now() });
+        s.events.push({ id: `fest-${t.day}-${Math.random().toString(36).slice(2, 6)}`, day: t.day, ...(t.end && t.end > t.day ? { end: t.end } : {}), title: t.title, by: ADMIN, at: Date.now() });
         s.events.sort((a, b) => a.day.localeCompare(b.day));
       }
       s.seeded[key] = true;
