@@ -51,7 +51,10 @@ export class Wichtel extends DurableObject {
         { id: newId(), cat: 'geschenke', text: 'Escape Room 🔐', for: 'Lilly', by: ADMIN, at: Date.now(), likes: [ADMIN], done: null },
       ],
     };
-    s.stammtisch ||= { day: 4, done: {} };   // Wochentag 1=Mo … 7=So (0 = aus); done: was für welche Woche schon passiert ist
+    s.stammtisch ||= { day: 3, done: {} };
+    s.seeded ||= {};
+    // Stammtisch ist standardmäßig mittwochs (einmalig umstellen)
+    if (!s.seeded['stammtisch-mi']) { s.stammtisch.day = 3; s.seeded['stammtisch-mi'] = true; changed = true; }
     s.imgs ||= {};    // hochgeladene Bilder (Umfragen, Fragebögen): id -> { by, at }; das Bild selbst liegt unter img:<id>   // Fragebögen (wie Google Forms)
     // Der große Gören-Chat mit allen
     const all = s.chats.find(c => c.id === 'all');
@@ -79,6 +82,25 @@ export class Wichtel extends DurableObject {
       s.seeded[key] = true;
       changed = true;
     }
+    // Stammtisch steht jede Woche automatisch am Stammtisch-Tag im Kalender (diese und nächste Woche),
+    // die Abstimmung kann ihn dann noch auf einen anderen Tag verschieben
+    if (s.stammtisch.day) {
+      const now = berlinNow();
+      const mon = addDays(now.day, 1 - now.wd);
+      for (const week of [mon, addDays(mon, 7)]) {
+        const st = s.stammtisch;
+        st.done[week] ||= {};
+        if (st.done[week].auto) continue;
+        st.done[week].auto = true;
+        changed = true;
+        const day = addDays(week, st.day - 1);
+        if (day < now.day) continue;
+        if (s.events.some(e => /stammtisch/i.test(e.title) && e.day >= week && e.day <= addDays(week, 6))) continue;
+        s.events.push({ id: `stammtisch-${week}`, day, title: 'Stammtisch 🍻', by: null, auto: true, at: Date.now() });
+        s.events.sort((a, b) => a.day.localeCompare(b.day));
+      }
+    }
+
     // Account einer Person zurücksetzen (Passwort vergessen): Zahl in RESET in config.js erhöhen
     for (const [person, n] of Object.entries(RESET || {})) {
       if ((s.resets[person] || 0) >= n) continue;
@@ -157,7 +179,7 @@ export class Wichtel extends DurableObject {
       const nextSun = addDays(nextMon, 6);
       const week = nextMon;
       st.done[week] ||= {};
-      const fixed = s.events.some(e => /stammtisch/i.test(e.title) && e.day >= nextMon && e.day <= nextSun);
+      const fixed = s.events.some(e => !e.auto && /stammtisch/i.test(e.title) && e.day >= nextMon && e.day <= nextSun);
       // Abstimmung starten
       if (now.wd === st.day && now.hour >= 10 && !st.done[week].poll && !fixed) {
         const options = [];
@@ -165,7 +187,7 @@ export class Wichtel extends DurableObject {
         s.finds.unshift({ id: newId(), title: 'Stammtisch 🍻', kind: 'stammtisch', week, by: null, options, answers: {}, at: Date.now() });
         st.done[week].poll = now.day;
         await save();
-        await notify('🍻 Wann ist nächste Woche Stammtisch? Stimm jetzt ab!');
+        await notify('🍻 Wann ist nächste Woche Stammtisch und wer ist dabei? Stimm jetzt ab!');
       }
       // Erinnerung am Sonntag ab 18 Uhr
       const open = s.finds.find(f => f.kind === 'stammtisch' && !f.done && f.week === week);
@@ -507,6 +529,8 @@ export class Wichtel extends DurableObject {
       // Stammtisch fest eingetragen? Dann braucht es keine Abstimmung (und keine Erinnerung) für diese Woche
       if (/stammtisch/i.test(title)) {
         s.finds = s.finds.filter(f => !(f.kind === 'stammtisch' && !f.done && day >= f.week && day <= addDays(f.week, 6)));
+        const wk = addDays(day, 1 - berlinNow(new Date(`${day}T12:00:00Z`)).wd);
+        s.events = s.events.filter(e => !(e.auto && e.day >= wk && e.day <= addDays(wk, 6)));
       }
       await save();
       const [, mm, dd] = day.split('-').map(Number);
@@ -517,7 +541,7 @@ export class Wichtel extends DurableObject {
     if (path === '/api/events/delete') {
       const ev = s.events.find(e => e.id === body.id);
       if (!ev) return json({ error: 'Diesen Termin gibt es nicht mehr.' }, 404);
-      if (ev.by !== me) return json({ error: 'Nur wer den Termin eingetragen hat, kann ihn löschen.' }, 403);
+      if (ev.by !== me && !ev.auto) return json({ error: 'Nur wer den Termin eingetragen hat, kann ihn löschen.' }, 403);
       s.events = s.events.filter(e => e.id !== body.id);
       await save();
       return json({ ok: true, events: s.events });
@@ -598,9 +622,11 @@ export class Wichtel extends DurableObject {
           const best = Math.max(...votes);
           if (best >= 2) i = votes.indexOf(best);
         }
+        // Stammtisch abgestimmt: der automatische Termin dieser Woche wird ersetzt
+        if (f.kind === 'stammtisch') s.events = s.events.filter(e => !(e.auto && e.day >= f.week && e.day <= addDays(f.week, 6)));
         if (i >= 0) {
           const o = f.options[i];
-          added = { id: newId(), day: o.day, ...(o.end !== o.day ? { end: o.end } : {}), title: f.title, by: f.by, at: Date.now() };
+          added = { id: newId(), day: o.day, ...(o.end !== o.day ? { end: o.end } : {}), title: f.title, by: f.by, ...(f.kind === 'stammtisch' ? { who: s.names.filter(n => f.answers[n].includes(i)) } : {}), at: Date.now() };
           s.events.push(added);
           s.events.sort((a, b) => a.day.localeCompare(b.day));
           f.done = { option: i, event: added.id };
