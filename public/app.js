@@ -259,9 +259,12 @@ function renderCal() {
     li.querySelector('.date').textContent = ev.end ? `${dd}.${mm}.\nbis ${shortDay(ev.end)}` : `${wd}\n${dd}.${mm}.`;
     li.querySelector('.date').style.whiteSpace = 'pre-line';
     li.querySelector('.t').textContent = ev.title;
-    li.querySelector('.by').textContent = ev.bday ? 'Geburtstag' : `eingetragen von ${ev.by}`;
+    li.querySelector('.by').textContent = ev.bday ? 'Geburtstag'
+      : ev.auto ? 'jede Woche automatisch · Abstimmung kann ihn verschieben'
+      : ev.who ? `dabei: ${ev.who.map(displayName).join(', ')}`
+      : ev.by ? `eingetragen von ${displayName(ev.by)}` : 'per Abstimmung';
     if (ev.bday) li.classList.add('bday');
-    if (ev.by === account.person) {
+    if (ev.by === account.person || ev.auto) {
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Termin löschen');
       del.onclick = () => deleteEvent(ev.id);
@@ -1086,7 +1089,7 @@ const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sa
 function renderSettings() {
   $('st-day').value = String(state.stammtischDay ?? 0);
   $('st-note').textContent = state.stammtischDay
-    ? `Jeden ${WEEKDAYS[state.stammtischDay - 1]} kommt automatisch eine Abstimmung, an welchem Tag nächste Woche Stammtisch ist. Wer bis Sonntagabend nicht abgestimmt hat, wird erinnert. Trägt jemand den Stammtisch vorher fest in den Kalender ein, entfällt die Abstimmung. Gilt für alle.`
+    ? `Der Stammtisch steht jede Woche automatisch am ${WEEKDAYS[state.stammtischDay - 1]} im Kalender. Trotzdem kommt jeden ${WEEKDAYS[state.stammtischDay - 1]} eine Abstimmung, wann nächste Woche Stammtisch ist und wer dabei ist. Der Tag mit den meisten Stimmen ersetzt dann den automatischen Termin. Wer bis Sonntagabend nicht abgestimmt hat, wird erinnert. Gilt für alle.`
     : 'Es kommt keine automatische Stammtisch-Abstimmung.';
   const meP = state.people?.[account.person] || {};
   setAvatar($('me-avatar'), account.person);
