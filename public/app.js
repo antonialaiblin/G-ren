@@ -74,7 +74,7 @@ function render() {
   $('bucket-box').hidden = !inside || revealing;
   if (inside) renderBucket();
   if (inside) applyHome(revealing);
-  else { $('home-edit-wrap').hidden = true; $('home-edit').hidden = true; $('next-box').hidden = true; }
+  else { $('home-edit-wrap').hidden = true; $('home-edit').hidden = true; $('next-box').hidden = true; $('bell-box').hidden = true; }
   document.body.classList.toggle('tabs', inside);
   const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
   showTab(tab);
@@ -354,6 +354,7 @@ function renderTisch(f) {
 const WIDGETS = [
   { id: 'wichtel', el: 'wichtel', name: '🎄 Wichtel-Brief', note: 'bis Friendsmas' },
   { id: 'tisch', el: 'tisch-box', name: '🍻 Stammtisch-Tisch', note: 'wenn abgestimmt wird' },
+  { id: 'glocke', el: 'bell-box', name: '🔔 Glocke' },
   { id: 'termine', el: 'next-box', name: '📅 Nächste Termine', off: true },
   { id: 'polls', el: 'polls-box', name: '📊 Umfragen' },
   { id: 'bucket', el: 'bucket-box', name: '📝 Bucket List' },
@@ -378,6 +379,8 @@ function applyHome(revealing) {
     if (hidden.has(id)) node.hidden = true;
   }
   if (!hidden.has('termine')) renderNextBox();
+  $('bell-box').hidden = hidden.has('glocke') || revealing;
+  if (!hidden.has('glocke')) renderBell();
   $('next-box').hidden = hidden.has('termine') || revealing;
   $('home-edit-wrap').hidden = revealing || !$('home-edit').hidden;
   if (!$('home-edit').hidden) renderHomeEdit();
@@ -395,6 +398,71 @@ function renderNextBox() {
   }
   $('next-empty').hidden = list.length > 0;
 }
+// ---------- Glocke ----------
+let bellImg = null;
+function ringWhen(at) {
+  const d = new Date(at), now = new Date();
+  const hm = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `heute ${hm}`;
+  if (d.toDateString() === new Date(now - 86400000).toDateString()) return `gestern ${hm}`;
+  return `${d.getDate()}.${d.getMonth() + 1}. ${hm}`;
+}
+function renderBell() {
+  const rings = state.rings || [];
+  const slot = $('bell-img-slot');
+  if (!slot.firstChild) slot.append(imgPicker(bellImg, (id) => { bellImg = id; }, '📷 Foto'));
+  // Neu geklingelt, seit ich zuletzt geschaut habe?
+  let seen = 0; try { seen = Number(localStorage.getItem('goeren-bell-seen')) || 0; } catch {}
+  const fresh = rings.find(r => r.by !== account.person && r.at > seen);
+  $('bell-new').hidden = !fresh;
+  $('bell-btn').classList.toggle('ringing', !!fresh);
+  const ul = $('bell-list'); ul.innerHTML = '';
+  for (const r of rings.slice(0, 5)) {
+    const li = el('li', r.by !== account.person && r.at > seen ? 'fresh' : '');
+    const av = el('span', 'avatar'); setAvatar(av, r.by);
+    const body = el('div', 'bell-msg');
+    const head = el('div', 'bell-head');
+    head.append(el('b', '', `${displayName(r.by)} hat geklingelt`), el('span', 'muted small', ` · ${ringWhen(r.at)}`));
+    body.append(head);
+    if (r.text) body.append(el('p', 'bell-txt', r.text));
+    if (r.img) body.append(imgThumb(r.img, 'thumb'));
+    li.append(av, body);
+    if (r.by === account.person) {
+      const x = el('button', 'ghost tiny', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Löschen');
+      x.onclick = async () => { try { const res = await api('/api/ring/delete', { id: r.id }); state.rings = res.rings; renderBell(); } catch (e) { alert(e.message); } };
+      li.append(x);
+    }
+    ul.append(li);
+  }
+}
+function bellSeen() {
+  try { localStorage.setItem('goeren-bell-seen', String(Date.now())); } catch {}
+}
+$('bell-btn').onclick = () => {
+  bellSeen();
+  const b = $('bell-btn'); b.classList.remove('ring-now'); void b.offsetWidth; b.classList.add('ring-now');
+  renderBell();
+  $('bell-text').focus();
+};
+$('bell-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('bell-error', '');
+  const send = $('bell-send'); send.disabled = true;
+  try {
+    const r = await api('/api/ring', { text: $('bell-text').value, img: bellImg });
+    state.rings = r.rings;
+    $('bell-text').value = ''; bellImg = null; $('bell-img-slot').innerHTML = '';
+    bellSeen();
+    const b = $('bell-btn'); b.classList.remove('ring-now'); void b.offsetWidth; b.classList.add('ring-now');
+    renderBell();
+    send.textContent = '🔔 Geklingelt!';
+    setTimeout(() => { send.textContent = '🔔 Klingeln!'; }, 2500);
+  } catch (e2) { err('bell-error', e2.message); }
+  send.disabled = false;
+});
+// Aus der Benachrichtigung kommend: zur Glocke springen
+if (location.hash === '#glocke') setTimeout(() => { $('bell-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 800);
+
 async function saveHome(order, hidden) {
   const r = await api('/api/me/home', { order, hidden: [...hidden] });
   account = r.account; state.account = r.account;
