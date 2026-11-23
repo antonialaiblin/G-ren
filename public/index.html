@@ -12,6 +12,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Gören">
   <script src="/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Pacifico&display=swap">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -209,9 +212,10 @@
     <p class="foot small muted" id="foot" hidden>Niemand zieht sich selbst. Die Zuteilung liegt nur auf dem Server, auch die Organisatorin sieht sie nicht.</p>
 
     <!-- Bucket List (ganz unten auf der Übersicht) -->
-    <section id="bucket-box" class="card" hidden>
-      <h2>🪣 Unsere Bucket List</h2>
-      <p class="muted small">Was wir noch alles zusammen machen wollen.</p>
+    <section id="bucket-box" class="note" hidden>
+      <span class="pin" aria-hidden="true"></span>
+      <h2 class="lettering">Bucket List</h2>
+      <p class="note-sub">Was wir noch alles zusammen machen wollen ♡</p>
       <div class="bucket-cats" id="bucket-cats" role="tablist"></div>
       <form class="bucket-add" id="bucket-form" autocomplete="off">
         <input id="bucket-text" maxlength="140" placeholder="Was wollt ihr machen?">

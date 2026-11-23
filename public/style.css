@@ -506,3 +506,67 @@ li.done .b-t { text-decoration: line-through; color: var(--muted); }
 .b-del { flex: none; background: none; border: 0; color: var(--muted); padding: 4px 6px; font-size: 16px; }
 .bucket-done { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .bucket-done summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: 14px; }
+
+/* ---------- Bucket List als gepunkteter Notizzettel mit Stecknadel ---------- */
+.note {
+  --paper: #fffdf6; --ink: #2b2f6b; --ink-soft: #6a6a92; --dot: rgba(60, 60, 110, .22); --pencil: #c2314f;
+  position: relative; margin: 34px 6px 24px; padding: 34px 20px 20px;
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.4px);
+  background-size: 18px 18px; background-position: 9px 9px;
+  border-radius: 3px; transform: rotate(-1.2deg);
+  box-shadow: 0 1px 1px rgba(0,0,0,.08), 0 10px 24px rgba(40, 20, 70, .18), inset 0 0 40px rgba(180, 160, 120, .12);
+  color: var(--ink); font-family: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+}
+:root[data-theme="dark"] .note { --paper: #ece6d8; --dot: rgba(60, 60, 110, .25); box-shadow: 0 10px 28px rgba(0,0,0,.5); }
+.note::after { /* leicht eingerissene Ecke unten rechts */
+  content: ""; position: absolute; right: 0; bottom: 0; width: 26px; height: 26px;
+  background: linear-gradient(135deg, var(--paper) 50%, rgba(0,0,0,.08) 50%); border-radius: 0 0 3px 0;
+}
+.note .pin {
+  position: absolute; top: -14px; left: 50%; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; z-index: 2;
+  background: radial-gradient(circle at 35% 30%, #ff8fb0 0 18%, #e0336a 45%, #9c1442 100%);
+  box-shadow: 2px 4px 6px rgba(0,0,0,.35);
+}
+.note .pin::after { /* Nadel */
+  content: ""; position: absolute; left: 50%; top: 22px; width: 2px; height: 10px; margin-left: -1px;
+  background: linear-gradient(#9aa0a6, #5f6368); transform: rotate(14deg); transform-origin: top; border-radius: 1px;
+}
+.note .lettering {
+  font-family: "Pacifico", "Brush Script MT", cursive; font-weight: 400; font-size: 40px; line-height: 1.2;
+  text-align: center; margin: 0; color: #7a3fb0; text-shadow: 2px 2px 0 rgba(242, 193, 78, .55);
+}
+.note .note-sub { text-align: center; font-size: 21px; color: var(--ink-soft); margin: 0 0 6px; }
+.note .bucket-cats .chip {
+  font-family: inherit; font-size: 20px; font-weight: 700; background: transparent; color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px; padding: 2px 12px;
+}
+.note .bucket-cats .chip.on { background: rgba(122, 63, 176, .14); color: #7a3fb0; border-color: #7a3fb0; }
+.note .bucket-cats .ghost-chip { border-style: dashed; color: var(--ink-soft); border-color: var(--ink-soft); }
+.note .bucket-add input, .note .bucket-add select, .note .bucket-newcat input {
+  font-family: inherit; font-size: 21px; background: transparent; color: var(--ink);
+  border: 0; border-bottom: 2px solid rgba(43, 47, 107, .35); border-radius: 0; padding: 4px 4px;
+}
+.note .bucket-add input::placeholder, .note .bucket-newcat input::placeholder { color: rgba(43, 47, 107, .45); }
+.note .bucket-add button, .note .bucket-newcat button {
+  font-family: inherit; font-size: 22px; background: transparent; color: #7a3fb0; border: 2px solid #7a3fb0;
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+}
+.note .bucket-list li { border-top: 0; padding: 5px 0; gap: 12px; align-items: flex-start; }
+.note .b-t { font-size: 24px; line-height: 1.15; }
+.note .b-meta { font-family: inherit; font-size: 17px; color: var(--ink-soft); }
+.note .b-check { /* handgemaltes Kästchen */
+  width: 26px; height: 26px; margin-top: 2px; border-radius: 3px 6px 4px 7px; border: 2.5px solid var(--ink);
+  background: transparent; color: var(--pencil); font-family: inherit; font-size: 34px; font-weight: 700; line-height: 14px;
+  overflow: visible; transform: rotate(-3deg);
+}
+.note li.done .b-check { background: transparent; }
+.note li.done .b-t { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--pencil); text-decoration-thickness: 2px; }
+.note .b-like { font-family: inherit; font-size: 18px; background: transparent; border: 0; color: var(--ink-soft); padding: 0 4px; }
+.note .b-like.on { background: transparent; color: var(--pencil); }
+.note .b-del { color: var(--ink-soft); font-family: inherit; font-size: 20px; }
+.note .bucket-done { border-top: 2px dashed rgba(43, 47, 107, .25); }
+.note .bucket-done summary, .note .muted, .note #bucket-empty, .note #bucket-gift-note { font-family: inherit; font-size: 19px; color: var(--ink-soft); }
+.note .error { font-family: system-ui, sans-serif; }
+
+.note .b-like { background: transparent !important; }
