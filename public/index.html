@@ -201,6 +201,22 @@
       <p class="error" id="bucket-error" hidden></p>
     </section>
 
+    <!-- Glocke: klingeln = Alarm bei allen anderen -->
+    <section id="bell-box" class="bell-card" hidden>
+      <button type="button" class="bell" id="bell-btn" aria-label="Glocke klingeln">
+        <span class="bell-icon" aria-hidden="true">🔔</span>
+        <span class="bell-new" id="bell-new" hidden>neu</span>
+      </button>
+      <h2 class="bell-title">Glocke</h2>
+      <p class="bell-sub">Klingeln, und alle anderen bekommen einen Alarm.</p>
+      <form class="bell-form" id="bell-form" autocomplete="off">
+        <textarea id="bell-text" maxlength="300" rows="2" placeholder="Was ist los? (freiwillig)"></textarea>
+        <div class="row bell-row"><span id="bell-img-slot"></span><button type="submit" id="bell-send">🔔 Klingeln!</button></div>
+        <p class="error" id="bell-error" hidden></p>
+      </form>
+      <ul class="bell-list" id="bell-list"></ul>
+    </section>
+
     <!-- Nächste Termine (kann man sich auf die Übersicht holen) -->
     <section id="next-box" class="card" hidden>
       <h2>📅 Nächste Termine</h2>

@@ -146,14 +146,14 @@ export class Wichtel extends DurableObject {
     } : null;
     // Benachrichtigung an alle anderen schicken, die sie angeschaltet haben
     // onlyFor: nur an diese Personen (z. B. die Mitglieder eines Chats)
-    const notify = async (msg, onlyFor = null, link = '/#kalender') => {
+    const notify = async (msg, onlyFor = null, link = '/#kalender', alarm = false) => {
       if (!s.vapid) return;
       const subs = Object.entries(s.push).filter(([, p]) => {
         const who = s.accounts[p.user]?.person;
         return who !== me && (!onlyFor || onlyFor.includes(who));
       });
       if (!subs.length) return;
-      for (const [, p] of subs) p.msg = { text: msg, at: Date.now(), link };
+      for (const [, p] of subs) p.msg = { text: msg, at: Date.now(), link, ...(alarm ? { alarm: true } : {}) };
       await save();
       const ok = await Promise.all(subs.map(([ep]) => sendPush(s.vapid, ep, s.origin || url.origin)));
       let gone = false;
@@ -222,6 +222,7 @@ export class Wichtel extends DurableObject {
         bescherung: BESCHERUNG,
         friendsmas: FRIENDSMAS,
         stammtischDay: s.stammtisch.day,
+        rings: me ? s.rings || [] : [],
       });
     }
 
@@ -264,7 +265,7 @@ export class Wichtel extends DurableObject {
       try { b = await request.json(); } catch {}
       const p = s.push[String(b.endpoint || '')];
       const msg = p?.msg && Date.now() - p.msg.at < 2 * 86400_000 ? p.msg.text : null;
-      return json({ text: msg || 'Es gibt Neuigkeiten bei den Gören.', link: p?.msg?.link || '/' });
+      return json({ text: msg || 'Es gibt Neuigkeiten bei den Gören.', link: p?.msg?.link || '/', alarm: !!(msg && p.msg.alarm) });
     }
 
     if (request.method !== 'POST') return json({ error: 'Nicht gefunden.' }, 404);
@@ -702,6 +703,32 @@ export class Wichtel extends DurableObject {
       s.imgs[id] = { by: me, at: Date.now() };
       await save();
       return json({ ok: true, id });
+    }
+    // ---------- Glocke: alle anderen bekommen einen Alarm ----------
+    if (path === '/api/ring') {
+      s.rings ||= [];
+      const text = String(body.text || '').trim().slice(0, 300);
+      const img = imgOk(body.img);
+      const last = s.rings.find(r => r.by === me);
+      if (last && Date.now() - last.at < 20_000) return json({ error: 'Nicht so schnell, die Glocke klingelt noch 🔔' }, 429);
+      const ring = { id: newId(), by: me, text, ...(img ? { img } : {}), at: Date.now() };
+      s.rings.unshift(ring);
+      const old = s.rings.splice(20);
+      await dropImgs(old.map(r => r.img));
+      await save();
+      const who = acct.display || me;
+      await notify(`🔔 ${who} klingelt!${text ? ` ${text}` : ''}${img ? ' 📷' : ''}`, null, '/#glocke', true);
+      return json({ ok: true, rings: s.rings });
+    }
+    if (path === '/api/ring/delete') {
+      s.rings ||= [];
+      const r = s.rings.find(x => x.id === body.id);
+      if (!r) return json({ error: 'Das gibt es nicht mehr.' }, 404);
+      if (r.by !== me) return json({ error: 'Nur wer geklingelt hat, kann das löschen.' }, 403);
+      s.rings = s.rings.filter(x => x !== r);
+      await dropImgs([r.img]);
+      await save();
+      return json({ ok: true, rings: s.rings });
     }
     if (path === '/api/img') {
       const img = imgOk(body.id) ? await this.ctx.storage.get(`img:${body.id}`) : null;

@@ -640,3 +640,35 @@ li.done .b-t { text-decoration: line-through; color: var(--muted); }
 .next-list li.bday .n-date { color: var(--berry, #c2314f); }
 .home-edit-list .he-name { flex-wrap: wrap; row-gap: 0; }
 .home-edit-list .he-name small { flex-basis: 100%; padding-left: 28px; font-weight: 500; }
+
+/* ---------- Glocke ---------- */
+.bell-card { margin: 18px 0; padding: 18px 16px; border-radius: 22px; text-align: center;
+  background: radial-gradient(130% 90% at 50% 0%, #fff6d6 0%, #f8e3a8 55%, #f0cf7a 100%); color: #5a3c00;
+  box-shadow: 0 8px 22px rgba(120, 80, 0, .18); }
+:root[data-theme="dark"] .bell-card { background: radial-gradient(130% 90% at 50% 0%, #4d3a10 0%, #382907 60%, #261b03 100%); color: #ffe7a3; }
+.bell { position: relative; width: 104px; height: 104px; border-radius: 50%; padding: 0; margin: 0 auto; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #fff8dc, #ffd45c 55%, #e0a400); border: 4px solid #b98200;
+  box-shadow: 0 6px 0 #8a6000, 0 12px 20px rgba(0,0,0,.2); }
+.bell:active { transform: translateY(4px); box-shadow: 0 2px 0 #8a6000, 0 6px 12px rgba(0,0,0,.2); }
+.bell-icon { font-size: 56px; line-height: 1; display: block; transform-origin: 50% 10%; }
+.bell.ringing .bell-icon { animation: bell-shake 1.2s ease-in-out infinite; }
+.bell.ring-now .bell-icon { animation: bell-shake .25s ease-in-out 6; }
+@keyframes bell-shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(18deg); } 40% { transform: rotate(-16deg); } 60% { transform: rotate(10deg); } 80% { transform: rotate(-6deg); } }
+.bell-new { position: absolute; top: -4px; right: -10px; background: #d9472b; color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
+.bell-title { margin: 10px 0 0; font-family: 'Pacifico', cursive; font-weight: 400; font-size: 30px; color: #a06a00; }
+:root[data-theme="dark"] .bell-title { color: #ffcf4d; }
+.bell-sub { margin: 2px 0 12px; font-size: 14px; opacity: .85; }
+.bell-form textarea { width: 100%; box-sizing: border-box; border-radius: 14px; border: 2px solid rgba(160, 106, 0, .35); background: rgba(255,255,255,.7); padding: 10px 12px; font: inherit; color: #3b2800; resize: vertical; }
+:root[data-theme="dark"] .bell-form textarea { background: rgba(0,0,0,.25); color: #ffe7a3; }
+.bell-row { justify-content: space-between; align-items: center; margin-top: 8px; }
+#bell-send { background: #d9472b; border-color: #d9472b; color: #fff; }
+.bell-list { list-style: none; margin: 14px 0 0; padding: 0; text-align: left; display: grid; gap: 8px; }
+.bell-list li { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 14px; background: rgba(255,255,255,.55); }
+:root[data-theme="dark"] .bell-list li { background: rgba(0,0,0,.22); }
+.bell-list li.fresh { box-shadow: 0 0 0 2px #d9472b; }
+.bell-list .avatar { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #e0a400 center/cover; color: #fff; }
+.bell-msg { flex: 1; min-width: 0; }
+.bell-txt { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bell-msg .thumb { margin-top: 6px; max-width: 100%; max-height: 220px; border-radius: 10px; display: block; }
+@media (prefers-reduced-motion: reduce) { .bell .bell-icon { animation: none !important; } }
+.bell-list .bell-msg img.thumb { width: auto; height: auto; max-width: 100%; max-height: 220px; object-fit: contain; }
