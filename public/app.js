@@ -471,9 +471,15 @@ function renderBucket() {
       check.setAttribute('aria-label', i.done ? 'Wieder offen' : 'Erledigt');
       check.onclick = () => bucketCall('/api/bucket/done', { id: i.id });
       const txt = el('div', 'b-txt');
-      txt.append(el('span', 'b-t', i.text));
-      const meta = [i.for ? `für ${displayName(i.for)}` : '', `von ${displayName(i.by)}`, i.done ? `erledigt ${new Date(i.done.at).toLocaleDateString('de-DE')}` : ''].filter(Boolean).join(' · ');
-      txt.append(el('span', 'b-meta small muted', meta));
+      // Geschenke: „Kart fahren mit Leo 🏎️“ statt „für Leo · von Toni“
+      let title = i.text;
+      if (i.for) {
+        const m = i.text.match(/^(.*?)(\s*[\p{Extended_Pictographic}\uFE0F\u200D]+)?$/u);
+        title = `${m[1]} mit ${displayName(i.for)}${m[2] || ''}`;
+      }
+      txt.append(el('span', 'b-t', title));
+      const meta = [i.for ? '' : `von ${displayName(i.by)}`, i.done ? `erledigt ${new Date(i.done.at).toLocaleDateString('de-DE')}` : ''].filter(Boolean).join(' · ');
+      if (meta) txt.append(el('span', 'b-meta small muted', meta));
       const like = el('button', 'b-like' + (i.likes.includes(account.person) ? ' on' : ''), `♥ ${i.likes.length}`); like.type = 'button';
       like.title = i.likes.map(displayName).join(', ') || 'Will ich auch!';
       like.setAttribute('aria-label', `Will ich auch (${i.likes.length})`);
