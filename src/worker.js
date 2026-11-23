@@ -560,10 +560,28 @@ export class Wichtel extends DurableObject {
       await save();
       return json({ ok: true, bucket: bucketView() });
     }
+    if (path === '/api/bucket/catdel') {
+      const c = s.bucket.cats.find(x => x.id === body.id);
+      if (!c) return json({ error: 'Diese Kategorie gibt es nicht mehr.' }, 404);
+      if (s.bucket.cats.length <= 1) return json({ error: 'Eine Kategorie muss bleiben.' }, 400);
+      if (s.bucket.items.some(i => i.cat === c.id)) return json({ error: 'In der Kategorie stehen noch Einträge. Lösch die zuerst.' }, 400);
+      s.bucket.cats = s.bucket.cats.filter(x => x !== c);
+      await save();
+      return json({ ok: true, bucket: bucketView() });
+    }
     if (path === '/api/bucket/cat') {
       const name = String(body.name || '').trim().slice(0, 40);
       const emoji = String(body.emoji || '').trim().slice(0, 8) || '⭐';
       if (!name) return json({ error: 'Bitte gib der Kategorie einen Namen.' }, 400);
+      // Bestehende Kategorie bearbeiten (umbenennen, anderes Emoji)
+      if (body.id) {
+        const c = s.bucket.cats.find(x => x.id === body.id);
+        if (!c) return json({ error: 'Diese Kategorie gibt es nicht mehr.' }, 404);
+        if (s.bucket.cats.some(x => x !== c && x.name.toLowerCase() === name.toLowerCase())) return json({ error: 'Diese Kategorie gibt es schon.' }, 400);
+        c.name = name; c.emoji = emoji;
+        await save();
+        return json({ ok: true, bucket: bucketView() });
+      }
       if (s.bucket.cats.length >= 12) return json({ error: 'Es gibt schon genug Kategorien.' }, 400);
       if (s.bucket.cats.some(c => c.name.toLowerCase() === name.toLowerCase())) return json({ error: 'Diese Kategorie gibt es schon.' }, 400);
       s.bucket.cats.push({ id: newId(), name, emoji, by: me });

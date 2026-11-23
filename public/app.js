@@ -508,8 +508,12 @@ function renderBucket() {
     tabs.append(t);
   }
   const plus = el('button', 'chip ghost-chip', '+ Kategorie'); plus.type = 'button';
-  plus.onclick = () => { $('bucket-cat-form').hidden = !$('bucket-cat-form').hidden; if (!$('bucket-cat-form').hidden) $('bucket-cat-name').focus(); };
+  plus.onclick = () => openCatForm(null);
+  const pen = el('button', 'chip ghost-chip', '✏️ Bearbeiten'); pen.type = 'button';
+  pen.setAttribute('aria-label', 'Kategorie bearbeiten');
+  pen.onclick = () => openCatForm(cat);
   tabs.append(plus);
+  if (cat) tabs.append(pen);
 
   // Für wen? (nur bei Geschenken)
   const forSel = $('bucket-for');
@@ -576,14 +580,37 @@ $('bucket-form').addEventListener('submit', async (e) => {
   if (!text) { $('bucket-text').focus(); return; }
   if (await bucketCall('/api/bucket/add', { cat: bucketCat, text, for: $('bucket-for').value || null })) { $('bucket-text').value = ''; $('bucket-for').value = ''; }
 });
+// Kategorie anlegen (c = null) oder bearbeiten
+let catEditing = null;
+function openCatForm(c) {
+  const f = $('bucket-cat-form');
+  if (!f.hidden && catEditing === (c?.id || null)) { f.hidden = true; return; }
+  catEditing = c?.id || null;
+  $('bucket-cat-emoji').value = c ? c.emoji : '';
+  $('bucket-cat-name').value = c ? c.name : '';
+  $('bucket-cat-save').textContent = c ? 'Speichern' : 'Anlegen';
+  $('bucket-cat-edit').hidden = !c;
+  f.hidden = false;
+  $('bucket-cat-name').focus();
+}
+function closeCatForm() {
+  $('bucket-cat-name').value = ''; $('bucket-cat-emoji').value = ''; $('bucket-cat-form').hidden = true; catEditing = null;
+}
 $('bucket-cat-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (await bucketCall('/api/bucket/cat', { name: $('bucket-cat-name').value, emoji: $('bucket-cat-emoji').value })) {
-    const cats = state.bucket.cats; bucketCat = cats[cats.length - 1].id;
-    $('bucket-cat-name').value = ''; $('bucket-cat-emoji').value = ''; $('bucket-cat-form').hidden = true;
+  const editing = catEditing;
+  if (await bucketCall('/api/bucket/cat', { id: editing, name: $('bucket-cat-name').value, emoji: $('bucket-cat-emoji').value })) {
+    if (!editing) { const cats = state.bucket.cats; bucketCat = cats[cats.length - 1].id; }
+    closeCatForm();
     renderBucket();
   }
 });
+$('bucket-cat-cancel').onclick = closeCatForm;
+$('bucket-cat-del').onclick = async () => {
+  const c = state.bucket.cats.find(x => x.id === catEditing);
+  if (!c || !confirm(`Kategorie „${c.name}“ löschen?`)) return;
+  if (await bucketCall('/api/bucket/catdel', { id: c.id })) { closeCatForm(); renderBucket(); }
+};
 
 // ---------- Fragebögen ----------
 const QTYPES = [

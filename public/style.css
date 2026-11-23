@@ -616,3 +616,10 @@ li.done .b-t { text-decoration: line-through; color: var(--muted); }
 .tisch-acts button:not(.ghost) { background: #d9472b; border-color: #d9472b; color: #fff; }
 .tisch-acts button.ghost { color: inherit; border-color: currentColor; }
 @media (prefers-reduced-motion: reduce) { .coaster, .chair { transition: none; } }
+
+.bucket-cat-edit { flex-basis: 100%; display: flex; justify-content: space-between; }
+.bucket-cat-edit #bucket-cat-del { color: var(--pencil, #c2314f); }
+.bucket-newcat { flex-wrap: wrap; }
+.bucket-newcat #bucket-cat-name { flex: 1 1 160px; min-width: 0; }
+.bucket-newcat { margin-bottom: 10px; }
+.note .bucket-cat-edit .link { border: 0; background: none; box-shadow: none; padding: 4px 0; }
