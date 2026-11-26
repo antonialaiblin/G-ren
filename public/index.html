@@ -93,6 +93,7 @@
       <h2 class="hello-title"><span class="avatar" id="hello-avatar"></span><span id="ready-title">Hallo!</span></h2>
       <p class="next-ev" id="next-ev" hidden></p>
       <p class="next-ev" id="find-hint" hidden></p>
+      <p class="next-ev guest-hello" id="guest-hello" hidden></p>
     </section>
 
     <!-- Elemente der Übersicht: jede kann sie ein- und ausblenden und die Reihenfolge ändern (siehe WIDGETS in app.js) -->
@@ -340,7 +341,9 @@
     <section id="settings" class="card" hidden>
       <h2>⚙️ Profil &amp; Einstellungen</h2>
 
-      <div class="profile-row">
+      <p class="muted small" id="guest-info" hidden></p>
+
+      <div class="profile-row member-only">
         <span class="avatar big" id="me-avatar"></span>
         <div>
           <b id="me-name"></b>
@@ -352,7 +355,7 @@
         </div>
       </div>
 
-      <details class="set">
+      <details class="set member-only">
         <summary>🎂 Geburtstag <span class="muted small" id="set-bday-now"></span></summary>
         <form id="bday-set-form">
           <div class="bday-row">
@@ -365,7 +368,7 @@
         </form>
       </details>
 
-      <details class="set">
+      <details class="set member-only">
         <summary>👤 Name ändern <span class="muted small" id="set-name-now"></span></summary>
         <form id="name-form" autocomplete="off">
           <label class="field"><span>So begrüßt dich die App</span><input id="set-name" maxlength="30" minlength="2" required></label>
@@ -375,7 +378,7 @@
         </form>
       </details>
 
-      <details class="set">
+      <details class="set member-only">
         <summary>🔒 Passwort ändern</summary>
         <form id="pw-form">
           <label class="field"><span>Jetziges Passwort</span><input type="password" id="pw-old" maxlength="100" autocomplete="current-password" required></label>
@@ -396,7 +399,7 @@
         <p class="muted small" id="theme-note"></p>
       </div>
 
-      <div class="set-row">
+      <div class="set-row member-only">
         <label class="switch-row">
           <span class="set-label">🍻 Stammtisch-Tag</span>
           <select id="st-day" class="st-select"></select>
@@ -404,7 +407,7 @@
         <p class="muted small" id="st-note"></p>
       </div>
 
-      <div class="set-row">
+      <div class="set-row member-only">
         <label class="switch-row">
           <span class="set-label">🔔 Benachrichtigungen</span>
           <input type="checkbox" class="switch" id="push-toggle">
@@ -421,6 +424,27 @@
       <p class="muted small">Hier kannst du ein neues Passwort setzen, wenn eine es vergessen hat. Sag es ihr danach, sie kann sich dann direkt damit anmelden.</p>
       <ul class="acct-list" id="acct-list"></ul>
       <p class="error" id="admin-error" hidden></p>
+    </section>
+
+    <!-- Nur für die Admin: Gastzugänge -->
+    <section class="card" id="guest-box" hidden>
+      <div class="row head-row">
+        <h2>🎟️ Gastzugänge</h2>
+        <button type="button" class="small-btn" id="guest-new">+ Gast einladen</button>
+      </div>
+      <p class="muted small">Lad jemanden ein, die nicht zu den Gören gehört. Du bestimmst, was sie sehen und machen darf. Sie bekommt einen Link und ist damit ohne Passwort drin.</p>
+      <form id="guest-form" class="sub-form" hidden autocomplete="off">
+        <label class="field"><span>Name vom Gast</span><input id="guest-name" maxlength="30" minlength="2" required placeholder="z. B. Mia"></label>
+        <p class="muted small" style="margin:12px 0 4px">Was darf der Gast?</p>
+        <div class="guest-areas" id="guest-areas"></div>
+        <label class="field" id="guest-size-row" hidden><span>Größe fürs Wichteln (optional)</span><input id="guest-size" maxlength="20" placeholder="z. B. M"></label>
+        <p class="muted small" id="guest-wichtel-note" hidden>Der Gast wird in die Auslosung eingebaut, ohne dass neu ausgelost wird: Eine Person beschenkt dann den Gast, und der Gast beschenkt die Person, die sie vorher hatte. Wenn diese Person ihren Brief schon geöffnet hatte, bekommt sie Bescheid, dass er sich geändert hat.</p>
+        <p class="error" id="guest-error" hidden></p>
+        <div class="row end"><button type="button" class="ghost" id="guest-cancel">Abbrechen</button><button type="submit" id="guest-save">Link erstellen</button></div>
+      </form>
+      <ul class="acct-list guest-list" id="guest-list"></ul>
+      <p class="muted small" id="guest-empty">Noch keine Gäste eingeladen.</p>
+      <p class="error" id="guest-list-error" hidden></p>
     </section>
     </div>
 

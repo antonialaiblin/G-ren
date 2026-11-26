@@ -48,25 +48,28 @@ function render() {
   const opened = new Set(state.opened);
   const claimed = new Set(state.claimed);
 
-  // Fortschritt: wer hat schon nachgeschaut?
-  const n = opened.size, total = state.names.length;
+  // Fortschritt: wer hat schon nachgeschaut? (Gören und Gäste, die mitwichteln)
+  const wl = state.wichtlers?.length ? state.wichtlers : state.names;
+  const n = wl.filter(x => opened.has(x)).length, total = wl.length;
   $('bar').style.width = (n / total * 100) + '%';
   $('status-line').textContent = n === total
     ? 'Alle haben ihren Wichtel gesehen. Frohes Shoppen!'
-    : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${state.names.filter(x => !opened.has(x)).join(', ')}.`;
+    : `${n} von ${total} haben schon nachgeschaut. Noch offen: ${wl.filter(x => !opened.has(x)).map(displayName).join(', ')}.`;
   // Leiste unten (Übersicht / Kalender) gibt es erst, wenn man angemeldet ist und weiß, wer man ist
   // Erst rein, wenn man weiß, wer man ist, und den Geburtstag eingetragen hat
-  const needBday = !!(account && account.person && !state.people?.[account.person]?.birthday);
+  const guest = !!account?.guest;   // Gast mit Einladungslink: sieht nur, was erlaubt ist
+  const needBday = !guest && !!(account && account.person && !state.people?.[account.person]?.birthday);
   const inside = !!(account && account.person) && !needBday;
   // Wichteln gibt es bis einschließlich Friendsmas (12.12.), danach verschwindet der Brief
-  const wichtelOn = inside && !(state.friendsmas && isoDay(new Date()) > state.friendsmas);
+  const wichtelOn = inside && !(state.friendsmas && isoDay(new Date()) > state.friendsmas)
+    && (!guest || (mayG('wichteln') && (state.wichtlers || []).includes(account.person)));
   const revealing = !$('reveal').hidden;
   $('status').hidden = !wichtelOn;
   $('foot').hidden = !wichtelOn;
   $('tabbar').hidden = !inside;
   $('settings').hidden = !inside;
   $('wichtel').hidden = !wichtelOn || revealing;
-  const openSt = inside && (state.finds || []).find(f => f.kind === 'stammtisch' && !f.done);
+  const openSt = inside && !guest && (state.finds || []).find(f => f.kind === 'stammtisch' && !f.done);
   $('tisch-box').hidden = !openSt || revealing;
   if (openSt) renderTisch(openSt);
   $('polls-box').hidden = !inside || revealing;
@@ -76,7 +79,13 @@ function render() {
   if (inside) applyHome(revealing);
   else { $('home-edit-wrap').hidden = true; $('home-edit').hidden = true; $('next-box').hidden = true; $('bell-box').hidden = true; }
   document.body.classList.toggle('tabs', inside);
-  const tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
+  let tab = !inside ? 'home' : location.hash === '#kalender' ? 'cal' : location.hash === '#chat' ? 'chat' : location.hash === '#einstellungen' ? 'set' : 'home';
+  if ((tab === 'cal' && !mayG('kalender')) || (tab === 'chat' && !mayG('chat'))) tab = 'home';
+  document.querySelector('.tabbar [data-tab="cal"]').hidden = !mayG('kalender');
+  document.querySelector('.tabbar [data-tab="chat"]').hidden = !mayG('chat');
+  document.querySelectorAll('.member-only').forEach(x => { x.hidden = guest; });
+  for (const id of ['poll-new', 'form-new', 'chat-new']) $(id).hidden = guest;
+  document.querySelector('[data-ev-mode="find"]').hidden = guest;
   showTab(tab);
   // Auf der Übersicht steht das große Logo, da braucht es die Kopfzeile nicht
   document.body.classList.toggle('home-in', inside);
@@ -84,7 +93,8 @@ function render() {
   if (tab !== 'chat' && openChat) leaveChat();
   if (inside) renderCal();
   $('admin-box').hidden = !(inside && state.isAdmin);
-  if (inside && state.isAdmin) loadAccounts();
+  $('guest-box').hidden = !(inside && state.isAdmin);
+  if (inside && state.isAdmin) { loadAccounts(); loadGuests(); }
 
   if (!$('reveal').hidden) return;
 
@@ -124,6 +134,8 @@ function render() {
     $('ready').hidden = false;
     $('ready-error').hidden = true;
     $('ready-title').textContent = `Hallo ${shown}! 👋`;
+    $('guest-hello').hidden = !guest;
+    if (guest) $('guest-hello').textContent = `🎟️ Du bist als Gast bei den Gören. Du kannst hier: ${account.areas.map(a => GUEST_AREA_SHORT[a]).join(', ')}.`;
     setAvatar($('hello-avatar'), me);
     $('hello-avatar').hidden = !state.people[me]?.avatar;
     $('addr-name').textContent = shown;
@@ -136,13 +148,13 @@ function render() {
     const today = isoDay(new Date());
     const next = allEvents().find(e => (e.end || e.day) >= today);
     const waiting = (state.finds || []).filter(f => !f.done && !f.answers[me]).length;
-    $('find-hint').hidden = !waiting;
+    $('find-hint').hidden = !waiting || !mayG('kalender');
     if (waiting) {
       $('find-hint').innerHTML = '🗳️ <b></b> <a href="#kalender">Abstimmen</a>';
       $('find-hint').querySelector('b').textContent = waiting === 1
         ? 'Eine Terminabstimmung wartet auf dich.' : `${waiting} Terminabstimmungen warten auf dich.`;
     }
-    $('next-ev').hidden = !next;
+    $('next-ev').hidden = !next || !mayG('kalender');
     if (next) {
       const [, mm, dd] = next.day.split('-').map(Number);
       $('next-ev').innerHTML = '📅 Nächster Termin: <b></b> <a href="#kalender">Kalender</a>';
@@ -150,6 +162,16 @@ function render() {
     }
   }
 }
+
+// Darf ich das? Gören dürfen alles, Gäste nur die Bereiche, die die Admin erlaubt hat
+const mayG = (area) => !account?.guest || (account.areas || []).includes(area);
+const GUEST_AREAS = [
+  ['wichteln', '🎄 Wichteln', 'mitwichteln: Brief öffnen und Wünsche eintragen'],
+  ['kalender', '📅 Kalender', 'Termine sehen, eintragen und abstimmen'],
+  ['umfragen', '📊 Umfragen', 'bei Umfragen abstimmen und Fragebögen ausfüllen'],
+  ['chat', '💬 Gören-Chat', 'im großen Chat mitlesen und schreiben'],
+];
+const GUEST_AREA_SHORT = { wichteln: 'wichteln', kalender: 'den Kalender sehen', umfragen: 'bei Umfragen mitmachen', chat: 'im Gören-Chat schreiben' };
 
 // ---------- Seiten (Tabs) ----------
 function showTab(name) {
@@ -269,7 +291,7 @@ function renderCal() {
       : ev.who ? `dabei: ${ev.who.map(displayName).join(', ')}`
       : ev.by ? `eingetragen von ${displayName(ev.by)}` : 'per Abstimmung';
     if (ev.bday) li.classList.add('bday');
-    if (ev.by === account.person || ev.auto) {
+    if (ev.by === account.person || (ev.auto && !account.guest)) {
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Termin löschen');
       del.onclick = () => deleteEvent(ev.id);
@@ -360,6 +382,10 @@ const WIDGETS = [
   { id: 'bucket', el: 'bucket-box', name: '📝 Bucket List' },
 ];
 function homeLayout() {
+  if (account?.guest) {
+    const need = { wichtel: 'wichteln', polls: 'umfragen', termine: 'kalender' };
+    return { order: WIDGETS.map(w => w.id), hidden: new Set(WIDGETS.filter(w => !need[w.id] || !mayG(need[w.id])).map(w => w.id)) };
+  }
   const h = account?.home?.order?.length ? account.home : {};
   const known = WIDGETS.map(w => w.id);
   const order = (h.order || []).filter(id => known.includes(id));
@@ -382,7 +408,7 @@ function applyHome(revealing) {
   $('bell-box').hidden = hidden.has('glocke') || revealing;
   if (!hidden.has('glocke')) renderBell();
   $('next-box').hidden = hidden.has('termine') || revealing;
-  $('home-edit-wrap').hidden = revealing || !$('home-edit').hidden;
+  $('home-edit-wrap').hidden = revealing || !$('home-edit').hidden || !!account?.guest;
   if (!$('home-edit').hidden) renderHomeEdit();
 }
 function renderNextBox() {
@@ -505,10 +531,10 @@ function renderFinds() {
     const picks = draftPicks[f.id] || f.answers[me] || [];
     el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><p class="muted small status"></p><div class="row end acts"></div>';
     el.querySelector('.t').textContent = f.title;
-    el.querySelector('.by').textContent = f.by ? ` von ${f.by}` : ' · kommt jede Woche automatisch';
+    el.querySelector('.by').textContent = f.by ? ` von ${displayName(f.by)}` : ' · kommt jede Woche automatisch';
     const ul = el.querySelector('.opts');
     f.options.forEach((o, i) => {
-      const yes = state.names.filter(n => (f.answers[n] || []).includes(i));
+      const yes = Object.keys(f.answers).filter(n => f.answers[n].includes(i));
       const li = document.createElement('li');
       li.innerHTML = '<label><input type="checkbox"><span class="when"></span><span class="who small muted"></span></label>';
       const cb = li.querySelector('input');
@@ -520,9 +546,9 @@ function renderFinds() {
         draftPicks[f.id] = [...cur];
       };
       li.querySelector('.when').textContent = rangeText(o);
-      li.querySelector('.who').textContent = yes.length ? `✓ ${yes.join(', ')}` : '';
+      li.querySelector('.who').textContent = yes.length ? `✓ ${yes.map(displayName).join(', ')}` : '';
       if (f.done && f.done.option === i) li.classList.add('win');
-      if (yes.length === state.names.length) li.classList.add('all');
+      if (state.names.every(n => yes.includes(n))) li.classList.add('all');
       ul.appendChild(li);
     });
     el.querySelector('.status').textContent = f.done
@@ -530,7 +556,7 @@ function renderFinds() {
         ? `🎉 Alle können am ${rangeText(f.options[f.done.option])} Das steht jetzt im Kalender!`
         : `🎉 Es wird ${rangeText(f.options[f.done.option])}, da können die meisten. Steht im Kalender!`)
       : missing.length
-        ? `Noch nicht abgestimmt: ${missing.join(', ')}.`
+        ? `Noch nicht abgestimmt: ${missing.map(displayName).join(', ')}.`
         : f.kind === 'stammtisch'
           ? 'Alle haben abgestimmt, aber an keinem Tag können mindestens zwei. Diese Woche also kein Stammtisch.'
           : 'Alle haben abgestimmt, aber es gibt keinen Termin, an dem alle können. Schlagt neue Termine vor.';
@@ -550,7 +576,7 @@ function renderFinds() {
       };
       acts.appendChild(send);
     }
-    if (f.by === me) {
+    if (f.by === me && !account.guest) {
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'ghost'; del.textContent = 'Löschen';
       del.onclick = async () => {
@@ -576,7 +602,7 @@ function renderPolls() {
     el.className = 'poll' + (p.closed ? ' closed' : '');
     el.innerHTML = '<div class="find-head"><b class="t"></b><span class="by muted small"></span></div><ul class="opts"></ul><form class="idea-row" hidden><input maxlength="80" placeholder="Deine Idee …" required><button type="submit">+</button></form><p class="muted small status"></p><div class="row end acts"></div>';
     el.querySelector('.t').textContent = p.q;
-    el.querySelector('.by').textContent = ` von ${p.by}${p.ideas ? ' · Ideen erwünscht' : ''}`;
+    el.querySelector('.by').textContent = ` von ${displayName(p.by)}${p.ideas ? ' · Ideen erwünscht' : ''}`;
     if (p.img) el.querySelector('.find-head').after(imgThumb(p.img, 'q-pic'));
     const total = p.options.reduce((n, o) => n + o.votes.length, 0);
     const max = Math.max(0, ...p.options.map(o => o.votes.length));
@@ -593,7 +619,7 @@ function renderPolls() {
       li.querySelector('.txt').textContent = (mine ? '✓ ' : '') + o.t;
       li.querySelector('.n').textContent = o.votes.length || '';
       if (o.img) { b.classList.add('has-img'); b.insertBefore(imgThumb(o.img, 'thumb'), li.querySelector('.txt')); }
-      li.querySelector('.who').textContent = o.votes.length ? o.votes.join(', ') + (p.ideas && o.by ? ` · Idee von ${o.by}` : '') : (p.ideas ? `Idee von ${o.by}` : '');
+      li.querySelector('.who').textContent = o.votes.length ? o.votes.map(displayName).join(', ') + (p.ideas && o.by ? ` · Idee von ${displayName(o.by)}` : '') : (p.ideas ? `Idee von ${displayName(o.by)}` : '');
       b.onclick = async () => {
         try { const r = await api('/api/polls/vote', { id: p.id, option: o.id }); state.polls = r.polls; renderPolls(); } catch (e2) { alert(e2.message); }
       };
@@ -874,7 +900,8 @@ function renderForms() {
     card.append(head);
     if (f.desc) card.append(el('p', 'muted small pre', f.desc));
     const missing = state.names.filter(n => !f.answered.includes(n));
-    card.append(el('p', 'muted small', `${f.questions.length} ${f.questions.length === 1 ? 'Frage' : 'Fragen'} · ${f.answered.length} von ${state.names.length} haben geantwortet`
+    const guestsAnswered = f.answered.filter(n => !state.names.includes(n)).length;
+    card.append(el('p', 'muted small', `${f.questions.length} ${f.questions.length === 1 ? 'Frage' : 'Fragen'} · ${f.answered.length - guestsAnswered} von ${state.names.length} haben geantwortet${guestsAnswered ? ` (+ ${guestsAnswered} ${guestsAnswered === 1 ? 'Gast' : 'Gäste'})` : ''}`
       + (missing.length && !f.closed ? ` · offen: ${missing.map(displayName).join(', ')}` : '') + (f.closed ? ' · beendet' : '')));
 
     const acts = el('div', 'row acts');
@@ -1320,6 +1347,8 @@ const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sa
 })();
 
 function renderSettings() {
+  $('guest-info').hidden = !account.guest;
+  if (account.guest) $('guest-info').textContent = `🎟️ Du bist als Gast angemeldet (${account.display}). Wenn du dich abmeldest, kommst du mit deinem Einladungslink jederzeit wieder rein.`;
   $('st-day').value = String(state.stammtischDay ?? 0);
   $('st-note').textContent = state.stammtischDay
     ? `Der Stammtisch steht jede Woche automatisch am ${WEEKDAYS[state.stammtischDay - 1]} im Kalender. Trotzdem kommt jeden ${WEEKDAYS[state.stammtischDay - 1]} eine Abstimmung, wann nächste Woche Stammtisch ist und wer dabei ist. Der Tag mit den meisten Stimmen ersetzt dann den automatischen Termin. Wer bis Sonntagabend nicht abgestimmt hat, wird erinnert. Gilt für alle.`
@@ -1795,5 +1824,107 @@ $('close-reveal').onclick = () => {
   window.scrollTo(0, 0);
 };
 
-load();
+// ---------- Gastzugänge (nur Admin) ----------
+let guestEditing = null;   // id des Gasts, dessen Rechte gerade geändert werden
+const guestLink = (code) => `${location.origin}/#gast=${code}`;
+function guestAreasBox(selected) {
+  const box = $('guest-areas'); box.innerHTML = '';
+  for (const [id, name, what] of GUEST_AREAS) {
+    const l = el('label', 'check-row');
+    const c = el('input'); c.type = 'checkbox'; c.value = id; c.checked = selected.includes(id);
+    c.onchange = guestFormExtras;
+    const t = el('span'); t.append(el('b', '', name), el('small', 'muted', ` · ${what}`));
+    l.append(c, t);
+    box.append(l);
+  }
+  guestFormExtras();
+}
+function guestFormExtras() {
+  const w = !!$('guest-areas').querySelector('input[value="wichteln"]:checked');
+  $('guest-size-row').hidden = !w;
+  $('guest-wichtel-note').hidden = !w;
+}
+function openGuestForm(g) {
+  guestEditing = g?.id || null;
+  $('guest-form').hidden = false;
+  $('guest-name').value = g?.name || '';
+  $('guest-size').value = g?.size || '';
+  guestAreasBox(g ? g.areas : ['wichteln']);
+  $('guest-save').textContent = g ? 'Speichern' : 'Link erstellen';
+  err('guest-error', '');
+  $('guest-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => $('guest-name').focus({ preventScroll: true }), 300);
+}
+$('guest-new').onclick = () => openGuestForm(null);
+$('guest-cancel').onclick = () => { $('guest-form').hidden = true; guestEditing = null; };
+$('guest-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err('guest-error', '');
+  const areas = [...$('guest-areas').querySelectorAll('input:checked')].map(c => c.value);
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const wasNew = !guestEditing;
+    const r = await api('/api/admin/guest/save', { id: guestEditing, name: $('guest-name').value, areas, size: $('guest-size').value });
+    $('guest-form').hidden = true;
+    const id = guestEditing || r.guests[r.guests.length - 1]?.id;
+    guestEditing = null;
+    renderGuests(r, id, wasNew ? 'Link erstellt ✓ Schick ihn jetzt dem Gast.' : 'Gespeichert ✓');
+  } catch (e2) { err('guest-error', e2.message); }
+  finally { if (btn) btn.disabled = false; }
+});
+async function loadGuests() {
+  try { renderGuests(await api('/api/admin/guests', {})); } catch (e2) { err('guest-list-error', e2.message); }
+}
+function renderGuests(r, okId = null, okText = '') {
+  err('guest-list-error', '');
+  const ul = $('guest-list'); ul.innerHTML = '';
+  $('guest-empty').hidden = r.guests.length > 0;
+  for (const g of r.guests) {
+    const li = el('li');
+    const head = el('div');
+    head.append(el('span', 'who', `🎟️ ${g.name}`), el('span', 'user', g.used ? ' · war schon da' : ' · Link noch nicht geöffnet'));
+    const chips = el('div', 'g-areas');
+    for (const [id, name] of GUEST_AREAS) if (g.areas.includes(id)) chips.append(el('span', 'g-area', name));
+    if (g.size && g.areas.includes('wichteln')) chips.append(el('span', 'g-area', `Größe ${g.size}`));
+    const link = el('div', 'g-link');
+    const inp = el('input'); inp.readOnly = true; inp.value = guestLink(g.code); inp.onclick = () => inp.select();
+    const copy = el('button', 'small-btn', navigator.share ? '📤 Teilen' : '📋 Kopieren'); copy.type = 'button';
+    copy.onclick = async () => {
+      const text = `Hallo ${g.name}! Hier ist dein Gastzugang für die Gören-App 🎟️`;
+      try {
+        if (navigator.share) { await navigator.share({ title: 'Gören', text, url: inp.value }); return; }
+        await navigator.clipboard.writeText(inp.value);
+        copy.textContent = '✓ Kopiert';
+      } catch { inp.select(); }
+      setTimeout(() => { copy.textContent = navigator.share ? '📤 Teilen' : '📋 Kopieren'; }, 2000);
+    };
+    link.append(inp, copy);
+    const acts = el('div', 'g-acts');
+    const edit = el('button', 'link', '✏️ Rechte ändern'); edit.type = 'button'; edit.onclick = () => openGuestForm(g);
+    const rev = el('button', 'link', '🚫 Zugang entziehen'); rev.type = 'button';
+    rev.onclick = async () => {
+      if (!confirm(`${g.name} den Zugang entziehen? Der Link funktioniert dann nicht mehr${g.inDraw ? ' und sie wichtelt nicht mehr mit' : ''}.`)) return;
+      try { renderGuests(await api('/api/admin/guest/revoke', { id: g.id })); } catch (e2) { err('guest-list-error', e2.message); }
+    };
+    acts.append(edit, rev);
+    li.append(head, chips, link, acts);
+    if (g.id === okId && okText) li.append(el('p', 'ok', okText));
+    ul.append(li);
+  }
+}
+
+// Mit einem Gast-Link geöffnet (…/#gast=…): als Gast anmelden
+async function start() {
+  const m = /^#gast=([0-9a-f]{48})$/.exec(location.hash);
+  if (!m) { load(); return; }
+  history.replaceState(null, '', location.pathname + '#start');
+  if (token) {
+    try { const st = await api('/api/state'); if (st.account && !st.account.guest
+      && !confirm('Das ist ein Gast-Link. Wenn du weitermachst, wirst du hier abgemeldet und bist als Gast drin. Weiter?')) { load(); return; } } catch {}
+  }
+  try { const r = await api('/api/guest/login', { code: m[1] }); setSession(r.token); }
+  catch (e2) { alert(e2.message); }
+  load();
+}
+start();
 initPush();

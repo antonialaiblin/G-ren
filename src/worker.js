@@ -1,11 +1,21 @@
 import { DurableObject } from 'cloudflare:workers';
 import { PEOPLE, BUDGET, BESCHERUNG, ROUND, RESET, ADMIN, FRIENDSMAS, FESTE_TERMINE } from './config.js';
-import { draw, hashPin } from './draw.js';
+import { draw, hashPin, addToPairs, removeFromPairs } from './draw.js';
 import { pwHash, hashPw, pwOk, newToken, cleanUsername } from './auth.js';
 import { newVapidKeys, sendPush, pushEndpointOk } from './push.js';
 
 const MAX_TRIES = 5;          // falsche Passwörter, bevor gesperrt wird
 const LOCK_MS = 10 * 60_000;  // 10 Minuten Sperre
+
+// Gastzugänge: Bereiche, die die Admin einem Gast erlauben kann
+export const GUEST_AREAS = ['wichteln', 'kalender', 'umfragen', 'chat'];
+// Was ein Gast in welchem Bereich darf (alles andere ist für Gäste gesperrt)
+const GUEST_PATHS = {
+  wichteln: ['/api/reveal', '/api/wishes'],
+  kalender: ['/api/events/add', '/api/events/delete', '/api/finds/answer'],
+  umfragen: ['/api/polls/vote', '/api/polls/idea', '/api/forms/answer', '/api/img/upload'],
+  chat: ['/api/chat/messages', '/api/chat/send'],
+};
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -35,6 +45,7 @@ export class Wichtel extends DurableObject {
     s.resets ||= {};
     s.events ||= [];
     s.push ||= {};
+    s.guests ||= {};   // Gastzugänge: id -> { id, name, code, areas, size, at, revoked }
     s.polls ||= [];
     s.chats ||= [];
     s.forms ||= [];
@@ -126,8 +137,15 @@ export class Wichtel extends DurableObject {
     // Wer ist angemeldet?
     const token = request.headers.get('x-session') || '';
     const sess = /^[0-9a-f]{48}$/.test(token) ? s.sessions[token] : null;
-    const acct = sess ? s.accounts[sess.user] : null;
-    const me = acct?.person && s.names.includes(acct.person) ? acct.person : null;
+    // Gast: mit Einladungslink angemeldet, darf nur die erlaubten Bereiche
+    const guest = sess?.guest && s.guests[sess.guest] && !s.guests[sess.guest].revoked ? s.guests[sess.guest] : null;
+    const acct = guest ? { username: guest.name, display: guest.name, person: guest.id, guest: true }
+      : sess?.user ? s.accounts[sess.user] : null;
+    const me = guest ? guest.id : acct?.person && s.names.includes(acct.person) ? acct.person : null;
+    const may = (area) => !guest || guest.areas.includes(area);
+    // Gäste mit Chat dürfen nur in den großen Gören-Chat
+    const chatGuests = () => Object.values(s.guests).filter(g => !g.revoked && g.areas.includes('chat')).map(g => g.id);
+    const inChat = (c) => guest ? c.id === 'all' && may('chat') : c.members.includes(me);
     const claimed = () => new Set(Object.values(s.accounts).map(a => a.person).filter(p => s.names.includes(p)));
     const findAcct = (name) => {
       const n = String(name || '').trim().toLowerCase();
@@ -138,7 +156,9 @@ export class Wichtel extends DurableObject {
       s.sessions[t] = { user: key, at: Date.now() };
       return t;
     };
-    const accountInfo = (a) => a ? {
+    const accountInfo = (a) => a?.guest ? {
+      username: a.username, person: a.person, display: a.display, home: null, guest: true, areas: [...guest.areas],
+    } : a ? {
       username: a.username,
       person: a.person && s.names.includes(a.person) ? a.person : null,
       display: a.display || null,   // selbst gewählter Name für „Hallo …“
@@ -208,31 +228,36 @@ export class Wichtel extends DurableObject {
         opened: Object.keys(s.opened),
         claimed: [...claimed()],
         account: accountInfo(acct),
-        events: me ? s.events : [],
-        polls: me ? s.polls : [],
+        events: me && may('kalender') ? s.events : [],
+        polls: me && may('umfragen') ? s.polls : [],
         // Geschenkideen für eine Person sieht diese Person nicht
-        bucket: me ? { cats: s.bucket.cats, items: s.bucket.items.filter(i => i.for !== me) } : null,
-        forms: me ? s.forms.map(formView) : [],
-        finds: me ? s.finds : [],
-        people: me ? people() : {},
-        chats: me ? myChats() : [],
+        bucket: me && !guest ? { cats: s.bucket.cats, items: s.bucket.items.filter(i => i.for !== me) } : null,
+        forms: me && may('umfragen') ? s.forms.map(formView) : [],
+        finds: me && may('kalender') ? s.finds : [],
+        people: me ? people(may('kalender')) : {},
+        chats: me && may('chat') ? myChats() : [],
+        // Wer beim Wichteln mitmacht (die Gören und Gäste mit Wichteln)
+        wichtlers: Object.keys(s.pairs),
         admin: ADMIN,
         isAdmin: me === ADMIN,   // Kalender sehen nur Angemeldete
         budget: BUDGET,
         bescherung: BESCHERUNG,
         friendsmas: FRIENDSMAS,
         stammtischDay: s.stammtisch.day,
-        rings: me ? s.rings || [] : [],
+        rings: me && !guest ? s.rings || [] : [],
       });
     }
 
     // Profil-Infos aller (Anzeigename, Geburtstag, ob es ein Profilbild gibt)
-    function people() {
+    function people(bdays = true) {
       const out = {};
       for (const a of Object.values(s.accounts)) {
         if (!a.person || !s.names.includes(a.person)) continue;
-        out[a.person] = { display: a.display || a.person, birthday: a.birthday || null, year: a.year || null, avatar: a.avatar || 0 };
+        // Geburtstage sehen Gäste nur mit Kalender
+        out[a.person] = { display: a.display || a.person, birthday: bdays ? a.birthday || null : null, year: bdays ? a.year || null : null, avatar: a.avatar || 0 };
       }
+      // Gäste (auch frühere), damit ihre Namen bei Nachrichten und Stimmen stehen
+      for (const g of Object.values(s.guests)) out[g.id] = { display: g.name, birthday: null, year: null, avatar: 0, guest: true };
       return out;
     }
     // Fragebogen für die Anzeige: bei anonymen Fragebögen ohne Namen
@@ -254,8 +279,8 @@ export class Wichtel extends DurableObject {
       };
     }
     function myChats() {
-      return s.chats.filter(c => c.members.includes(me)).map(c => ({
-        id: c.id, name: c.name, members: c.members, by: c.by || null, last: c.last || null,
+      return s.chats.filter(inChat).map(c => ({
+        id: c.id, name: c.name, members: c.id === 'all' ? [...c.members, ...chatGuests()] : c.members, by: c.by || null, last: c.last || null,
       })).sort((a, b) => (b.last?.at || 0) - (a.last?.at || 0));
     }
 
@@ -325,8 +350,27 @@ export class Wichtel extends DurableObject {
       return json({ hint: a?.hint || null, admin: ADMIN });
     }
 
+    // ---------- Gast: mit Einladungslink anmelden ----------
+    if (path === '/api/guest/login') {
+      const code = String(body.code || '');
+      const g = /^[0-9a-f]{48}$/.test(code) && Object.values(s.guests).find(x => x.code === code && !x.revoked);
+      if (!g) return json({ error: 'Dieser Gast-Link gilt nicht (mehr). Frag bei den Gören nach einem neuen.' }, 404);
+      const t = newToken();
+      s.sessions[t] = { guest: g.id, at: Date.now() };
+      g.used = Date.now();
+      await save();
+      return json({ token: t });
+    }
+
     // Ab hier muss man angemeldet sein
     if (!acct) return json({ error: 'Bitte melde dich an.', auth: true }, 401);
+
+    // Gäste dürfen nur, was die Admin erlaubt hat
+    if (guest) {
+      const ok = ['/api/logout', '/api/avatar', '/api/img'].includes(path)
+        || guest.areas.some(a => (GUEST_PATHS[a] || []).includes(path));
+      if (!ok) return json({ error: 'Das darfst du als Gast leider nicht.' }, 403);
+    }
 
     if (path === '/api/logout') {
       delete s.sessions[token];
@@ -429,7 +473,7 @@ export class Wichtel extends DurableObject {
     }
 
     // ---------- Chat ----------
-    const chat = s.chats.find(c => c.id === body.chat && c.members.includes(me));
+    const chat = s.chats.find(c => c.id === body.chat && inChat(c));
     if (path === '/api/chats/add') {
       const name = String(body.name || '').trim().slice(0, 60);
       if (!name) return json({ error: 'Bitte gib dem Chat einen Namen.' }, 400);
@@ -475,14 +519,16 @@ export class Wichtel extends DurableObject {
 
     // ---------- Umschlag öffnen ----------
     if (path === '/api/reveal') {
+      const to = s.pairs[me];
+      if (!to) return json({ error: 'Du bist bei dieser Wichtel-Runde nicht dabei.' }, 400);
       const first = !s.opened[me];
       if (first) s.opened[me] = Date.now();
       await save();
-      const to = s.pairs[me];
       const person = PEOPLE.find(p => p.name === to);
+      const toGuest = s.guests[to];
       return json({
-        first, to,
-        size: person ? person.size : '',
+        first, to: toGuest ? toGuest.name : to,
+        size: toGuest ? toGuest.size || '' : person ? person.size : '',
         theirWishes: s.wishes[to] || null,
         mine: s.wishes[me] || null,
         budget: BUDGET, bescherung: BESCHERUNG,
@@ -508,6 +554,69 @@ export class Wichtel extends DurableObject {
         })).sort((x, y) => (x.person || '~').localeCompare(y.person || '~')),
       });
       if (path === '/api/admin/accounts') return list();
+
+      // ---------- Gastzugänge ----------
+      const guestList = () => json({
+        guests: Object.values(s.guests).filter(g => !g.revoked).sort((a, b) => a.at - b.at).map(g => ({
+          id: g.id, name: g.name, code: g.code, areas: g.areas, size: g.size || '', used: g.used || null, inDraw: !!s.pairs[g.id],
+        })),
+      });
+      // Wichteln an/aus: Gast in die Auslosung ein- oder ausbauen. Wessen Brief sich ändert, wird benachrichtigt.
+      const changedLetter = [];
+      const setDraw = (g, on) => {
+        let x = null;
+        if (on && !s.pairs[g.id]) x = addToPairs(s.pairs, g.id, s.opened);
+        if (!on && s.pairs[g.id]) {
+          x = removeFromPairs(s.pairs, g.id);
+          delete s.opened[g.id];
+          delete s.wishes[g.id];
+        }
+        if (x && s.opened[x]) { delete s.opened[x]; changedLetter.push(x); }
+      };
+      const tellChanged = async (g, on) => {
+        const members = changedLetter.filter(x => s.names.includes(x));
+        if (members.length) await notify(on
+          ? `📬 Dein Wichtel-Brief hat sich geändert, weil ${g.name} jetzt mitwichtelt. Schau noch mal rein!`
+          : `📬 Dein Wichtel-Brief hat sich geändert. Schau noch mal rein!`, members, '/');
+      };
+      if (path === '/api/admin/guests') return guestList();
+      if (path === '/api/admin/guest/save') {
+        const name = cleanUsername(body.name);
+        if (name.length < 2) return json({ error: 'Bitte gib dem Gast einen Namen (mind. 2 Zeichen).' }, 400);
+        const areas = GUEST_AREAS.filter(a => Array.isArray(body.areas) && body.areas.includes(a));
+        if (!areas.length) return json({ error: 'Bitte wähl mindestens einen Bereich aus, den der Gast benutzen darf.' }, 400);
+        let g = body.id ? s.guests[String(body.id)] : null;
+        if (body.id && (!g || g.revoked)) return json({ error: 'Diesen Gast gibt es nicht mehr.' }, 404);
+        const low = name.toLowerCase();
+        if (s.names.some(n => n.toLowerCase() === low) || Object.values(s.guests).some(x => x !== g && !x.revoked && x.name.toLowerCase() === low))
+          return json({ error: 'Diesen Namen gibt es schon. Nimm z. B. noch den Nachnamen dazu.' }, 400);
+        if (!g) {
+          if (Object.values(s.guests).filter(x => !x.revoked).length >= 20) return json({ error: 'Es gibt schon 20 Gäste. Entzieh erst einem alten den Zugang.' }, 400);
+          g = { id: `gast_${newId()}`, code: newToken(), at: Date.now(), by: me };
+          s.guests[g.id] = g;
+        }
+        g.name = name;
+        g.areas = areas;
+        g.size = String(body.size || '').trim().slice(0, 20);
+        setDraw(g, areas.includes('wichteln'));
+        await save();
+        await tellChanged(g, areas.includes('wichteln'));
+        return guestList();
+      }
+      if (path === '/api/admin/guest/revoke') {
+        const g = s.guests[String(body.id || '')];
+        if (!g || g.revoked) return json({ error: 'Diesen Gast gibt es nicht mehr.' }, 404);
+        setDraw(g, false);
+        // Name bleibt gespeichert (für alte Chat-Nachrichten), aber der Link gilt nicht mehr
+        g.revoked = Date.now();
+        g.code = null;
+        g.areas = [];
+        for (const [t, ss] of Object.entries(s.sessions)) if (ss.guest === g.id) delete s.sessions[t];
+        await save();
+        await tellChanged(g, false);
+        return guestList();
+      }
+
       const target = s.accounts[String(body.key || '')];
       if (!target) return json({ error: 'Diesen Account gibt es nicht.' }, 404);
       if (path === '/api/admin/password') {
@@ -550,7 +659,7 @@ export class Wichtel extends DurableObject {
     if (path === '/api/events/delete') {
       const ev = s.events.find(e => e.id === body.id);
       if (!ev) return json({ error: 'Diesen Termin gibt es nicht mehr.' }, 404);
-      if (ev.by !== me && !ev.auto) return json({ error: 'Nur wer den Termin eingetragen hat, kann ihn löschen.' }, 403);
+      if (ev.by !== me && (!ev.auto || guest)) return json({ error: 'Nur wer den Termin eingetragen hat, kann ihn löschen.' }, 403);
       s.events = s.events.filter(e => e.id !== body.id);
       await save();
       return json({ ok: true, events: s.events });
